@@ -699,7 +699,348 @@ app.get('/api/health', (req, res) => {
 // ===================================================================
 // DÉMARRAGE
 // ===================================================================
+app.post('/api/pdf/reparation', async (req, res) => {
+  try {
+    const { analysis, description, date } = req.body;
+    
+    if (!analysis) {
+      return res.status(400).json({ error: 'Analyse manquante' });
+    }
+    
+    // Génération du PDF avec PDFKit
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      info: {
+        Title: 'Guide Réparation RénoExpert',
+        Author: 'RénoExpert',
+        Subject: 'Guide pratique de réparation'
+      }
+    });
+    
+    // Headers HTTP pour téléchargement PDF
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="guide-reparation.pdf"');
+    
+    doc.pipe(res);
+    
+    // ============== EN-TÊTE ==============
+    // Bandeau bleu en haut
+    doc.rect(0, 0, doc.page.width, 80).fill('#0066ff');
+    
+    // Logo / Titre
+    doc.fillColor('white')
+       .fontSize(24)
+       .font('Helvetica-Bold')
+       .text('RénoExpert', 50, 25);
+    
+    doc.fontSize(11)
+       .font('Helvetica')
+       .text('Guide pratique de réparation', 50, 55);
+    
+    // Date à droite
+    doc.fontSize(10)
+       .text(date || new Date().toLocaleDateString('fr-FR'), 50, 25, {
+         align: 'right',
+         width: doc.page.width - 100
+       });
+    
+    // ============== BANDEAU CONSEILS ==============
+    doc.fillColor('#0a0e27').fontSize(11);
+    doc.moveDown(3);
+    
+    // Encadré "À lire avant de commencer"
+    const yStart = doc.y + 10;
+    doc.rect(50, yStart, doc.page.width - 100, 60)
+       .fillAndStroke('#fff4e6', '#ffaa00');
+    
+    doc.fillColor('#c25a00')
+       .fontSize(11)
+       .font('Helvetica-Bold')
+       .text('⚠️ À LIRE AVANT DE COMMENCER', 60, yStart + 10);
+    
+    doc.fillColor('#5e6987')
+       .fontSize(9)
+       .font('Helvetica')
+       .text('• Coupez l\'électricité et l\'eau si nécessaire\n• Portez les EPI adaptés (gants, lunettes, masque)\n• En cas de doute, faites appel à un professionnel', 60, yStart + 27, {
+         width: doc.page.width - 120,
+         lineGap: 2
+       });
+    
+    doc.y = yStart + 80;
+    doc.moveDown();
+    
+    // ============== DESCRIPTION DU PROBLÈME ==============
+    if (description && description.trim()) {
+      doc.fillColor('#0066ff')
+         .fontSize(13)
+         .font('Helvetica-Bold')
+         .text('📋 Problème signalé');
+      
+      doc.moveDown(0.5);
+      doc.fillColor('#0a0e27')
+         .fontSize(10)
+         .font('Helvetica')
+         .text(description, {
+           width: doc.page.width - 100,
+           lineGap: 3
+         });
+      
+      doc.moveDown();
+    }
+    
+    // ============== CONTENU ANALYSE ==============
+    doc.fillColor('#0066ff')
+       .fontSize(13)
+       .font('Helvetica-Bold')
+       .text('🔧 Diagnostic & procédure de réparation');
+    
+    doc.moveDown(0.5);
+    
+    // Traitement du markdown simple
+    const lines = analysis.split('\n');
+    
+    for (let line of lines) {
+      // Vérifier si on doit passer à la page suivante
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+      }
+      
+      line = line.trim();
+      if (!line) {
+        doc.moveDown(0.3);
+        continue;
+      }
+      
+      // Titre H1 (#)
+      if (line.startsWith('# ')) {
+        doc.moveDown(0.3);
+        doc.fillColor('#0052cc')
+           .fontSize(14)
+           .font('Helvetica-Bold')
+           .text(line.replace(/^#\s+/, ''), { width: doc.page.width - 100 });
+        doc.moveDown(0.2);
+      }
+      // Titre H2 (##)
+      else if (line.startsWith('## ')) {
+        doc.moveDown(0.3);
+        doc.fillColor('#0066ff')
+           .fontSize(12)
+           .font('Helvetica-Bold')
+           .text(line.replace(/^##\s+/, ''), { width: doc.page.width - 100 });
+        doc.moveDown(0.2);
+      }
+      // Titre H3 (###)
+      else if (line.startsWith('### ')) {
+        doc.fillColor('#4d94ff')
+           .fontSize(11)
+           .font('Helvetica-Bold')
+           .text(line.replace(/^###\s+/, ''), { width: doc.page.width - 100 });
+        doc.moveDown(0.2);
+      }
+      // Liste à puces
+      else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ')) {
+        const text = line.replace(/^[\-•\*]\s+/, '');
+        doc.fillColor('#0a0e27')
+           .fontSize(10)
+           .font('Helvetica')
+           .text('• ' + text.replace(/\*\*(.*?)\*\*/g, '$1'), 
+             50, doc.y, 
+             { width: doc.page.width - 100, indent: 10, lineGap: 2 });
+      }
+      // Texte normal
+      else {
+        // Retire le markdown gras **texte**
+        const cleanLine = line.replace(/\*\*(.*?)\*\*/g, '$1');
+        doc.fillColor('#0a0e27')
+           .fontSize(10)
+           .font('Helvetica')
+           .text(cleanLine, { width: doc.page.width - 100, lineGap: 2 });
+      }
+    }
+    
+    // ============== PIED DE PAGE ==============
+    // Ajouter pied de page sur la dernière page
+    doc.moveDown(2);
+    
+    if (doc.y > doc.page.height - 100) {
+      doc.addPage();
+    }
+    
+    // Ligne séparation
+    doc.moveTo(50, doc.y)
+       .lineTo(doc.page.width - 50, doc.y)
+       .strokeColor('#e1e8f5')
+       .stroke();
+    
+    doc.moveDown(0.5);
+    
+    doc.fillColor('#5e6987')
+       .fontSize(9)
+       .font('Helvetica-Oblique')
+       .text('Ce guide a été généré par RénoExpert - L\'IA des pros du bâtiment.', { align: 'center' });
+    
+    doc.fontSize(8)
+       .text('Les recommandations sont indicatives. En cas de travaux importants ou de doute, consultez un professionnel qualifié.', { align: 'center' });
+    
+    doc.moveDown(0.3);
+    doc.fontSize(8).text('© RénoExpert ' + new Date().getFullYear() + ' - renoexpert.fr', { align: 'center' });
+    
+    // Fin du document
+    doc.end();
+    
+  } catch (error) {
+    console.error('Erreur PDF Réparation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
+// ===================================================================
+// ROUTES HISTORIQUE DES PROJETS
+// Sauvegarde et récupération des analyses de chaque utilisateur
+// ===================================================================
+
+// Stockage simple en mémoire (suffisant pour démarrer)
+// ⚠️ Note : les données se perdent si Railway redémarre le serveur
+// Pour persistence permanente, utiliser PostgreSQL plus tard
+const projetsDB = {};  // { userId: [projets] }
+
+// ===== SAUVEGARDER UN PROJET =====
+app.post('/api/projets/save', (req, res) => {
+  try {
+    const {
+      userId,        // identifiant utilisateur (email ou ID navigateur)
+      mode,          // 'visite', 'reparation', 'agent', 'marchand'
+      titre,         // titre du projet (ex: "Maison Compiègne")
+      analysis,      // texte de l'analyse
+      data           // toutes les autres données (location, surface, etc.)
+    } = req.body;
+    
+    if (!userId || !mode || !analysis) {
+      return res.status(400).json({ error: 'Données manquantes' });
+    }
+    
+    if (!projetsDB[userId]) {
+      projetsDB[userId] = [];
+    }
+    
+    const projet = {
+      id: Date.now().toString(),
+      userId,
+      mode,
+      titre: titre || `Projet ${mode} ${new Date().toLocaleDateString('fr-FR')}`,
+      analysis,
+      data: data || {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    projetsDB[userId].unshift(projet);  // Ajouter en début
+    
+    // Limite à 50 projets par utilisateur
+    if (projetsDB[userId].length > 50) {
+      projetsDB[userId] = projetsDB[userId].slice(0, 50);
+    }
+    
+    res.json({
+      success: true,
+      projet_id: projet.id,
+      total_projets: projetsDB[userId].length
+    });
+    
+  } catch (error) {
+    console.error('Erreur save projet:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== LISTER LES PROJETS D'UN UTILISATEUR =====
+app.get('/api/projets/list', (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ error: 'userId manquant' });
+    }
+    
+    const projets = projetsDB[userId] || [];
+    
+    // Renvoie juste les infos résumées (pas l'analyse complète)
+    const liste = projets.map(p => ({
+      id: p.id,
+      mode: p.mode,
+      titre: p.titre,
+      created_at: p.created_at,
+      location: p.data.location || '',
+      surface: p.data.surface || '',
+      preview: p.analysis.substring(0, 150) + '...'
+    }));
+    
+    res.json({
+      success: true,
+      total: liste.length,
+      projets: liste
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== RÉCUPÉRER UN PROJET COMPLET =====
+app.get('/api/projets/:id', (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const projetId = req.params.id;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId manquant' });
+    }
+    
+    const projets = projetsDB[userId] || [];
+    const projet = projets.find(p => p.id === projetId);
+    
+    if (!projet) {
+      return res.status(404).json({ error: 'Projet non trouvé' });
+    }
+    
+    res.json({ success: true, projet });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== SUPPRIMER UN PROJET =====
+app.delete('/api/projets/:id', (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const projetId = req.params.id;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId manquant' });
+    }
+    
+    if (!projetsDB[userId]) {
+      return res.status(404).json({ error: 'Aucun projet' });
+    }
+    
+    const initialLength = projetsDB[userId].length;
+    projetsDB[userId] = projetsDB[userId].filter(p => p.id !== projetId);
+    
+    if (projetsDB[userId].length === initialLength) {
+      return res.status(404).json({ error: 'Projet non trouvé' });
+    }
+    
+    res.json({
+      success: true,
+      remaining: projetsDB[userId].length
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 app.listen(PORT, () => {
   console.log(`🚀 RénoExpert v2.0 backend démarré sur le port ${PORT}`);
   console.log(`📋 4 modes actifs: Visite, Réparation, Agent, Marchand`);
