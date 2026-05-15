@@ -1041,6 +1041,344 @@ app.delete('/api/projets/:id', (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+// Variable d'environnement pour le token admin
+// Sur Railway : Variables → Ajoute ADMIN_TOKEN = ton_mot_de_passe_secret
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
+ 
+// ===================================================================
+// ROUTE DASHBOARD ADMIN - Afficher les feedbacks
+// ===================================================================
+ 
+app.get('/admin/feedbacks', (req, res) => {
+  try {
+    // Vérification du token admin
+    const token = req.query.token || req.headers.authorization;
+    
+    if (!token || token !== ADMIN_TOKEN) {
+      return res.status(401).send(`
+        <!DOCTYPE html>
+        <html lang="fr">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Admin - Authentification</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              min-height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 20px;
+            }
+            .login-box {
+              background: white;
+              border-radius: 16px;
+              padding: 40px;
+              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              max-width: 400px;
+              width: 100%;
+            }
+            h1 { color: #333; margin-bottom: 10px; font-size: 24px; }
+            p { color: #666; margin-bottom: 30px; font-size: 14px; }
+            input {
+              width: 100%;
+              padding: 12px 16px;
+              border: 2px solid #e0e0e0;
+              border-radius: 8px;
+              font-size: 15px;
+              margin-bottom: 20px;
+            }
+            input:focus { outline: none; border-color: #667eea; }
+            button {
+              width: 100%;
+              padding: 12px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+            }
+            button:hover { opacity: 0.9; }
+            .error { color: #f44336; font-size: 13px; margin-top: -10px; margin-bottom: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="login-box">
+            <h1>🔐 Admin RénoExpert</h1>
+            <p>Entrez le token d'administration</p>
+            <form method="GET">
+              <input type="password" name="token" placeholder="Token admin" required autofocus>
+              ${token && token !== ADMIN_TOKEN ? '<div class="error">❌ Token incorrect</div>' : ''}
+              <button type="submit">🔓 Se connecter</button>
+            </form>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Si authentifié → afficher le dashboard
+    
+    // Récupérer les feedbacks (depuis la variable globale ou base de données)
+    // Note : tu dois avoir une variable "feedbacks" quelque part dans ton code
+    // Si tu utilises une base de données, adapte cette partie
+    const allFeedbacks = global.feedbacks || [];
+    
+    // Statistiques
+    const total = allFeedbacks.length;
+    const positifs = allFeedbacks.filter(f => f.note === '👍').length;
+    const neutres = allFeedbacks.filter(f => f.note === '👌').length;
+    const negatifs = allFeedbacks.filter(f => f.note === '👎').length;
+    const satisfaction = total > 0 ? Math.round((positifs / total) * 100) : 0;
+    
+    const parMode = {};
+    allFeedbacks.forEach(f => {
+      parMode[f.mode] = (parMode[f.mode] || 0) + 1;
+    });
+    
+    // HTML du dashboard
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="fr">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admin - Feedbacks RénoExpert</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+          }
+          .container { max-width: 1200px; margin: 0 auto; }
+          header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+          }
+          h1 { font-size: 28px; margin-bottom: 5px; }
+          .subtitle { opacity: 0.9; font-size: 14px; }
+          
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+          }
+          .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          }
+          .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+          }
+          .stat-label {
+            color: #666;
+            font-size: 13px;
+          }
+          
+          .section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+          }
+          h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #333;
+          }
+          
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-size: 13px;
+            color: #666;
+            font-weight: 600;
+            border-bottom: 2px solid #e0e0e0;
+          }
+          td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+            color: #333;
+          }
+          tr:hover { background: #f8f9fa; }
+          
+          .note {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 16px;
+          }
+          .note.positif { background: #e8f5e9; }
+          .note.neutre { background: #fff4e6; }
+          .note.negatif { background: #ffebee; }
+          
+          .mode {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #e3f2fd;
+            color: #1976d2;
+          }
+          
+          .probleme {
+            color: #666;
+            font-size: 13px;
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          
+          .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 10px;
+          }
+          .btn:hover { opacity: 0.9; }
+          
+          .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+          }
+          .empty-icon { font-size: 48px; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          
+          <header>
+            <h1>📊 Dashboard Admin RénoExpert</h1>
+            <div class="subtitle">Feedbacks utilisateurs en temps réel</div>
+          </header>
+          
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-value">${total}</div>
+              <div class="stat-label">Total feedbacks</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${satisfaction}%</div>
+              <div class="stat-label">Satisfaction</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${negatifs}</div>
+              <div class="stat-label">À corriger</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${parMode['marchand'] || 0}</div>
+              <div class="stat-label">Mode MB</div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h2>📋 Tous les feedbacks</h2>
+            
+            ${total === 0 ? `
+              <div class="empty">
+                <div class="empty-icon">📭</div>
+                <div>Aucun feedback pour le moment</div>
+              </div>
+            ` : `
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Mode</th>
+                    <th>Note</th>
+                    <th>Localisation</th>
+                    <th>Problème signalé</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${allFeedbacks.slice(0, 50).reverse().map(f => `
+                    <tr>
+                      <td>${new Date(f.timestamp).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</td>
+                      <td><span class="mode">${f.mode || 'N/A'}</span></td>
+                      <td><span class="note ${f.note === '👍' ? 'positif' : f.note === '👎' ? 'negatif' : 'neutre'}">${f.note}</span></td>
+                      <td>${f.location || '-'}</td>
+                      <td><div class="probleme">${f.probleme || '-'}</div></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              
+              <a href="/admin/feedbacks/export?token=${token}" class="btn">📥 Télécharger CSV</a>
+            `}
+          </div>
+          
+        </div>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error('Erreur dashboard admin:', error);
+    res.status(500).send('Erreur serveur: ' + error.message);
+  }
+});
+ 
+// ===================================================================
+// ROUTE EXPORT CSV
+// ===================================================================
+ 
+app.get('/admin/feedbacks/export', (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || token !== ADMIN_TOKEN) {
+      return res.status(401).send('Non autorisé');
+    }
+    
+    const allFeedbacks = global.feedbacks || [];
+    
+    // Générer CSV
+    let csv = 'Date,Mode,Note,Localisation,Probleme\n';
+    allFeedbacks.forEach(f => {
+      csv += `${new Date(f.timestamp).toLocaleDateString('fr-FR')},${f.mode || ''},${f.note},${f.location || ''},"${(f.probleme || '').replace(/"/g, '""')}"\n`;
+    });
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="feedbacks-renoexpert.csv"');
+    res.send('\uFEFF' + csv); // BOM pour Excel
+    
+  } catch (error) {
+    res.status(500).send('Erreur export: ' + error.message);
+  }
+});
+ 
+// ===================================================================
+// FIN DU CODE DASHBOARD ADMIN
+// ===================================================================
 app.listen(PORT, () => {
   console.log(`🚀 RénoExpert v2.0 backend démarré sur le port ${PORT}`);
   console.log(`📋 4 modes actifs: Visite, Réparation, Agent, Marchand`);
