@@ -1,13 +1,14 @@
 {
   "name": "renoexpert-backend",
-  "version": "3.2.0",
-  "description": "RénoExpert Backend - Diagnostic immobilier IA avec PostgreSQL",
+  "version": "3.3.0",
+  "description": "RénoExpert Backend - Comptes utilisateurs + Notifications",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "multer": "^1.4.5-lts.1",
