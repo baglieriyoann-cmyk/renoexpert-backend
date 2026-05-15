@@ -1,979 +1,474 @@
-// ===================================================================
-// RénoExpert v2.0 - Backend complet avec 4 modes
-// Modes: Visite, Réparation, Agent Immo, Marchand de Biens
-// ===================================================================
+// ============================================================
+// RénoExpert Backend v3.2 - Avec PostgreSQL
+// ============================================================
+// 
+// Ce server.js remplace COMPLÈTEMENT ton ancien server.js
+// Il contient TOUT : analyses IA, PDF, feedbacks, projets, dashboard admin
+// Avec stockage PostgreSQL permanent
+//
+// ============================================================
 
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
-require('dotenv').config();
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===================================================================
-// CONFIGURATION
-// ===================================================================
+// Configuration
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static('public'));
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
-});
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB par fichier
 });
 
-// ===================================================================
-// PROMPTS IA - 4 MODES
-// ===================================================================
+// Anthropic
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// Token admin
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
+
+// ============================================================
+// CONNEXION POSTGRESQL
+// ============================================================
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+// Initialisation des tables au démarrage
+async function initDB() {
+  try {
+    // Table feedbacks
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feedbacks (
+        id SERIAL PRIMARY KEY,
+        mode VARCHAR(50),
+        note VARCHAR(10),
+        probleme TEXT,
+        location VARCHAR(255),
+        user_id VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Table projets
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS projets (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(100) NOT NULL,
+        mode VARCHAR(50) NOT NULL,
+        titre VARCHAR(255),
+        analysis TEXT,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Index pour recherche rapide
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_projets_user 
+      ON projets(user_id, created_at DESC)
+    `);
+    
+    console.log('✅ Base de données PostgreSQL initialisée');
+  } catch (err) {
+    console.error('❌ Erreur init DB:', err.message);
+  }
+}
+
+initDB();
+
+// ============================================================
+// PROMPTS IA
+// ============================================================
 
 const PROMPTS = {
-  // 🏠 MODE VISITE - Particulier acheteur
-  visite: `Tu es expert en bâtiment français, diagnostic pour acheteur particulier.
+  visite: `Tu es un expert immobilier français senior. Analyse les photos d'un bien immobilier pour quelqu'un qui le visite avant achat.
 
-Analyse les photos de cette visite immobilière et fournis :
+Donne une analyse structurée et précise :
 
-1. VERDICT (🟢 BON ÉTAT / 🟡 TRAVAUX MOYENS / 🔴 TRAVAUX LOURDS)
+# 🏠 Diagnostic visuel
 
-2. DIAGNOSTIC par pièce/zone visible :
-   - Points forts (architecture, matériaux, état)
-   - Points faibles (humidité, vétusté, défauts)
-   - Période de construction estimée
-   - Patrimoine architectural éventuel
+## État général
+[Évaluation globale du bien]
 
-3. TRAVAUX À PRÉVOIR (priorisés) :
-   - Critiques (sécurité, structurels)
-   - Importants (énergie, confort)
-   - Esthétiques (cosmétique)
+## Points forts ✅
+- [Liste des qualités observées]
 
-4. NORMES FRANÇAISES applicables :
-   - DTU concernés
-   - RT 2020 / RE 2020
-   - NF C 15-100 si électricité
-   - DPE estimation
+## Points de vigilance ⚠️
+- [Défauts, problèmes potentiels]
 
-5. BUDGET TRAVAUX estimatif (fourchette min-max)
+## Travaux à prévoir 🔨
+- [Travaux urgents]
+- [Travaux à moyen terme]
+- Estimation budget : XX 000 € à XX 000 €
 
-6. QUESTIONS À POSER AU VENDEUR (10 questions essentielles)
+## Questions à poser au vendeur ❓
+- [Liste de 5-8 questions importantes]
 
-7. POINTS DE NÉGOCIATION possibles
+## Verdict 🎯
+[Recommandation : acheter, négocier, fuir]
 
-Réponse structurée en français, claire, avec emojis pour lisibilité mobile.
-Surface fournie : {surface} m². Localisation : {location}.`,
+Sois précis, factuel, professionnel.`,
 
-  // 🔨 MODE RÉPARATION - DIY
-  reparation: `Tu es expert artisan français spécialisé en rénovation.
+  reparation: `Tu es un expert bâtiment français. Diagnostique le problème montré sur les photos et donne une procédure de réparation claire.
 
-L'utilisateur veut RÉPARER quelque chose. Analyse les photos et fournis :
+# 🔧 Diagnostic
 
-1. DIAGNOSTIC du problème :
-   - Cause probable
-   - Gravité (urgent/non urgent)
-   - Risques si non réparé
+## Problème identifié
+[Description précise]
 
-2. PROCÉDURE étape par étape (DIY si possible)
+## Cause probable
+[Pourquoi ce problème]
 
-3. MATÉRIEL NÉCESSAIRE :
-   - Produits exacts avec marques (Sika, Toupret, Bostik, etc.)
-   - Magasins (Leroy Merlin, Castorama, Brico Dépôt)
-   - Prix estimatif
+## Niveau de gravité
+🟢 Faible / 🟡 Modéré / 🔴 Urgent
 
-4. COÛT COMPARATIF :
-   - Coût DIY (matériel seul)
-   - Coût avec artisan (matériel + MO)
-   - Économie réalisée
+# 🛠️ Procédure de réparation
 
-5. NIVEAU DE DIFFICULTÉ (Facile / Moyen / Difficile / Expert)
+## Difficulté
+[DIY débutant / DIY confirmé / Pro recommandé]
 
-6. TEMPS ESTIMÉ pour la réparation
+## Matériel nécessaire
+- [Liste précise avec quantités]
 
-7. TUTORIELS YOUTUBE recommandés (mots-clés à chercher)
+## Étapes
+### Étape 1 : [Titre]
+[Description détaillée]
 
-8. QUAND APPELER UN PRO (signes d'alerte)
+### Étape 2 : [Titre]
+[Description]
 
-IMPORTANT : Si traitement de fissure murale, mentionner BANDE ARMÉE 
-dans les produits ET les étapes.
-Carrelage sale = karcher vapeur + buse rotative (technique pro, sans produits chimiques).
+[etc.]
 
-Réponse en français, ton accessible, structure claire.`,
+## Sécurité ⚠️
+[Précautions à prendre]
 
-  // 🏢 MODE AGENT IMMOBILIER
-  agent: `Tu es consultant pour agent immobilier français professionnel.
+## Budget estimé
+- DIY : XX €
+- Pro : XX € à XX €
 
-Analyse les photos pour préparer la VENTE de ce bien :
+## Quand appeler un pro ?
+[Critères de décision]`,
 
-1. FICHE TECHNIQUE :
-   - Type de bien
-   - Surface estimée
-   - Année construction probable
-   - Style architectural
-   - Localisation : {location}
+  agent: `Tu es un agent immobilier expert français. Crée une fiche commerciale professionnelle pour ce bien.
 
-2. POINTS FORTS DE VENTE (argumentaire) :
-   - Atouts patrimoniaux
-   - Atouts techniques
-   - Atouts d'emplacement
-   - Cibles acheteurs potentiels
+# 📋 Fiche commerciale
 
-3. POINTS FAIBLES À ANTICIPER :
-   - Travaux visibles
-   - Objections probables des acheteurs
-   - Comment les retourner positivement
+## Présentation du bien
+[Texte accrocheur 3-4 lignes]
 
-4. TRAVAUX À MENTIONNER dans l'annonce :
-   - Liste claire pour transparence
-   - Estimation budget (fourchette)
-   - Priorisation
+## Caractéristiques techniques
+- Surface : [m²]
+- État général : [évaluation]
+- DPE estimé : [classe]
+- Année construction : [estimation]
 
-5. STRATÉGIE DE COMMERCIALISATION :
-   - Prix marché conseillé (fourchette/m²)
-   - Cible acheteur idéal
-   - Mise en valeur photos
-   - Mots-clés annonce
+## Atouts à mettre en avant 💎
+[5-6 points commerciaux forts]
 
-6. DIAGNOSTICS OBLIGATOIRES à fournir
-   (selon année construction et surface)
+## Points d'amélioration possibles 🔨
+[Travaux à mentionner avec budget indicatif]
 
-7. ARGUMENTAIRE PRIX face aux contre-offres
+## Prix de marché conseillé 💰
+- Prix bas : XX €
+- Prix médian : XX €  
+- Prix haut : XX €
+- Justification : [explication]
 
-Réponse pro et structurée pour agent immobilier expérimenté.`,
+## Cible acheteur recommandée 🎯
+[Profil type]
 
-  // 💼 MODE MARCHAND DE BIENS
-  marchand: `Tu es expert-conseil pour MARCHAND DE BIENS français.
+## Stratégie de vente 📈
+[Conseils pour vendre rapidement]
 
-L'utilisateur évalue ce bien pour OPÉRATION de marchand de biens.
-Analyse complète professionnelle pour décision GO/NO GO :
+## Argumentaire pour les visites
+[5 phrases clés à dire]`,
 
-DONNÉES BIEN :
-- Surface : {surface} m²
-- Prix demandé : {prix_demande} €
-- Localisation : {location}
-- Stratégie : {strategie}
-- Nombre de lots envisagés : {nb_lots}
+  marchand: `Tu es un expert marchand de biens français senior. Analyse ce bien pour une opération MB (marchand de biens) avec engagement de revente sous 5 ans, frais notaire MB 3% (article 1115 CGI).
 
-LIVRE UN DOSSIER STRUCTURÉ :
+# 💼 Dossier Marchand de Biens
 
-1. SYNTHÈSE EXÉCUTIVE (5 lignes max)
-   GO / NO GO avec justification
+## Synthèse exécutive
+[Résumé pour la banque - 5 lignes]
 
-2. DIAGNOSTIC TECHNIQUE COMPLET :
-   - État global du bien (structure, toiture, électricité, plomberie)
-   - Diagnostics obligatoires à anticiper (plomb si avant 1949, amiante si avant 1997, gaz, électricité, DPE)
-   - Travaux par poste
+## Analyse du bien
+### État actuel
+[Description précise]
 
-3. CHIFFRAGE TRAVAUX DÉTAILLÉ MATÉRIEL / MAIN D'ŒUVRE :
-   Pour chaque poste, séparer :
-   - Coût matériel
-   - Coût main d'œuvre
-   - Total
-   
-   Postes à chiffrer :
-   a) Réglementaire (plomb, amiante, électricité NF C 15-100, plomberie, archi, diagnostics)
-   b) Énergétique pour viser DPE C (isolation murs/combles/planchers, VMC, chauffage électrique, ECS)
-   c) Aménagement (cloisons, sols, peintures, cuisines Leroy Merlin, SDB, WC)
-   d) Autres (menuiseries, toiture, humidité, compteurs, façade)
-   e) Aléas chantier 12%
-   
-   Total avec ratios 49% matériel / 51% MO en moyenne.
+### Potentiel
+[Opportunités identifiées]
 
-4. STRATÉGIE DE DIVISION en {nb_lots} lots :
-   Pour chaque lot : surface, type (T2/T3/T4), étage, prix vente estimé
+### Risques
+[Points d'attention]
 
-5. ESTIMATION REVENTE :
-   - Prix marché local actuel par m²
-   - Total revente brute
+## Étude de marché
+### Prix au m² zone
+[Analyse locale]
 
-6. PLAN FINANCIER COMPLET :
-   - Prix d'acquisition : {prix_demande} €
-   - **Frais notaire MARCHAND DE BIENS : 3% (article 1115 CGI, engagement revente <5 ans)**
-   - Travaux totaux (matériel + MO)
-   - Frais financiers (prêt 18 mois TEG 4-5%)
-   - Frais commercialisation (5% des reventes)
-   - Honoraires divers (architecte, géomètre)
+### Demande
+[Type d'acheteurs cibles]
 
-7. CALCUL MARGE :
-   - Total engagé
-   - Total revente
-   - **Marge brute**
-   - **Marge nette après IS 25%**
-   - Rentabilité en %
-   - TRI annualisé
+## Stratégie proposée
+### Travaux à réaliser
+- [Liste détaillée par poste]
+- Budget total estimé : XX €
 
-8. POINTS DE VIGILANCE :
-   - ABF (zone protégée Bâtiments de France)
-   - PLU (division autorisée ?)
-   - Servitudes
-   - Risques techniques
-   - Termites/mérule selon région
+### Découpage envisagé
+[Si division en lots]
 
-9. POINTS DE NÉGOCIATION du prix d'achat :
-   - Arguments objectifs basés sur diagnostics
-   - Prix cible optimal
-   - Marge négociation possible
+## Tableau financier prévisionnel
 
-10. PLANNING type sur 18 mois :
-    - Phase acquisition (M0-M1)
-    - Phase travaux (M1-M12)
-    - Phase commercialisation (M10-M18)
+### Coûts
+- Prix achat : XX €
+- Frais notaire MB (3%) : XX €
+- Travaux : XX €
+- Frais financiers : XX €
+- Honoraires : XX €
+- Commercialisation : XX €
+- TOTAL : XX €
 
-Sois précis, chiffré, professionnel. Utilise tableaux et structure claire.
-Ratios pro bâtiment français FFB pour matériel/MO.`
+### Revenus
+- Prix de revente estimé : XX €
+
+### Marge
+- Marge brute : XX €
+- IS (25%) : XX €
+- Marge nette : XX €
+- Rentabilité : XX%
+
+## Calendrier
+- Acquisition : Mois 1
+- Travaux : Mois 2 à X
+- Commercialisation : Mois X à Y
+- Revente : Mois Z
+
+## Recommandation finale
+🟢 GO / 🟡 GO avec négociation / 🔴 PASS
+[Justification]`
 };
 
-// ===================================================================
-// ROUTES API - 4 MODES
-// ===================================================================
+// ============================================================
+// ROUTE HEALTH CHECK
+// ============================================================
 
-// 🏠 MODE 1: VISITE
+app.get('/', (req, res) => {
+  res.json({ status: 'RénoExpert Backend v3.2 - Online with PostgreSQL' });
+});
+
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT NOW()');
+    res.json({ status: 'OK', database: 'connected', version: '3.2' });
+  } catch (err) {
+    res.json({ status: 'OK', database: 'error: ' + err.message });
+  }
+});
+
+// ============================================================
+// ROUTES ANALYSE IA
+// ============================================================
+
+async function analyzeWithClaude(prompt, photos, additionalContext = '') {
+  const content = [];
+  
+  if (additionalContext) {
+    content.push({ type: 'text', text: additionalContext });
+  }
+  
+  for (const photo of photos) {
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: photo.mimetype,
+        data: photo.buffer.toString('base64')
+      }
+    });
+  }
+  
+  content.push({ type: 'text', text: prompt });
+  
+  const message = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4096,
+    messages: [{ role: 'user', content }]
+  });
+  
+  return message.content[0].text;
+}
+
 app.post('/api/analyze/visite', upload.array('photos', 20), async (req, res) => {
   try {
-    const { surface = 'non renseignée', location = 'France' } = req.body;
-    const photos = req.files || [];
-    
-    if (photos.length === 0) {
-      return res.status(400).json({ error: 'Au moins une photo requise' });
+    const { surface, location } = req.body;
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Aucune photo' });
     }
-
-    const prompt = PROMPTS.visite
-      .replace('{surface}', surface)
-      .replace('{location}', location);
-
-    const messages = [{
-      role: 'user',
-      content: [
-        ...photos.map(photo => ({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: photo.mimetype,
-            data: photo.buffer.toString('base64')
-          }
-        })),
-        { type: 'text', text: prompt }
-      ]
-    }];
-
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 4000,
-      messages
-    });
-
-    res.json({
-      success: true,
-      mode: 'visite',
-      analysis: response.content[0].text,
-      tokens_used: response.usage
-    });
-
+    
+    const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
+    const analysis = await analyzeWithClaude(PROMPTS.visite, req.files, context);
+    
+    res.json({ success: true, analysis });
   } catch (error) {
-    console.error('Erreur mode visite:', error);
+    console.error('Erreur visite:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 🔨 MODE 2: RÉPARATION
 app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res) => {
   try {
-    const { description = '' } = req.body;
-    const photos = req.files || [];
-
-    if (photos.length === 0) {
-      return res.status(400).json({ error: 'Au moins une photo requise' });
+    const { description } = req.body;
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Aucune photo' });
     }
-
-    const fullPrompt = description 
-      ? `${PROMPTS.reparation}\n\nProblème décrit par l'utilisateur : ${description}`
-      : PROMPTS.reparation;
-
-    const messages = [{
-      role: 'user',
-      content: [
-        ...photos.map(photo => ({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: photo.mimetype,
-            data: photo.buffer.toString('base64')
-          }
-        })),
-        { type: 'text', text: fullPrompt }
-      ]
-    }];
-
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 3000,
-      messages
-    });
-
-    res.json({
-      success: true,
-      mode: 'reparation',
-      analysis: response.content[0].text,
-      tokens_used: response.usage
-    });
-
+    
+    const context = description ? `Description : ${description}\n\n` : '';
+    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context);
+    
+    res.json({ success: true, analysis });
   } catch (error) {
-    console.error('Erreur mode réparation:', error);
+    console.error('Erreur reparation:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 🏢 MODE 3: AGENT IMMOBILIER
 app.post('/api/analyze/agent', upload.array('photos', 30), async (req, res) => {
   try {
-    const { 
-      surface = 'non renseignée', 
-      location = 'France',
-      type_bien = 'maison',
-      agence_nom = '',
-      agent_nom = ''
-    } = req.body;
-    
-    const photos = req.files || [];
-
-    if (photos.length === 0) {
-      return res.status(400).json({ error: 'Au moins une photo requise' });
+    const { surface, location, agence_nom, agent_nom } = req.body;
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Aucune photo' });
     }
-
-    const prompt = PROMPTS.agent
-      .replace('{surface}', surface)
-      .replace('{location}', location);
-
-    const messages = [{
-      role: 'user',
-      content: [
-        ...photos.map(photo => ({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: photo.mimetype,
-            data: photo.buffer.toString('base64')
-          }
-        })),
-        { type: 'text', text: prompt }
-      ]
-    }];
-
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 4000,
-      messages
-    });
-
-    res.json({
-      success: true,
-      mode: 'agent',
-      agence: agence_nom,
-      agent: agent_nom,
-      analysis: response.content[0].text,
-      tokens_used: response.usage
-    });
-
+    
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
+    const analysis = await analyzeWithClaude(PROMPTS.agent, req.files, context);
+    
+    res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
-    console.error('Erreur mode agent:', error);
+    console.error('Erreur agent:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 💼 MODE 4: MARCHAND DE BIENS
 app.post('/api/analyze/marchand', upload.array('photos', 50), async (req, res) => {
   try {
-    const { 
-      surface = 'non renseignée', 
-      prix_demande = 0,
-      location = 'France',
-      strategie = 'Division en lots',
-      nb_lots = 5,
-      annee_construction = 'inconnue',
-      mb_societe = ''
-    } = req.body;
-    
-    const photos = req.files || [];
-
-    if (photos.length === 0) {
-      return res.status(400).json({ error: 'Au moins une photo requise' });
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Aucune photo' });
     }
+    
+    const context = `Société MB : ${mb_societe}
+Localisation : ${location}
+Surface : ${surface} m²
+Année construction : ${annee_construction}
+Prix demandé : ${prix_demande} €
+Stratégie : ${strategie}
+Nombre de lots envisagés : ${nb_lots}
 
-    const prompt = PROMPTS.marchand
-      .replace(/\{surface\}/g, surface)
-      .replace(/\{prix_demande\}/g, prix_demande)
-      .replace(/\{location\}/g, location)
-      .replace(/\{strategie\}/g, strategie)
-      .replace(/\{nb_lots\}/g, nb_lots);
+IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 
-    const messages = [{
-      role: 'user',
-      content: [
-        ...photos.map(photo => ({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: photo.mimetype,
-            data: photo.buffer.toString('base64')
-          }
-        })),
-        { type: 'text', text: prompt }
-      ]
-    }];
-
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 8000,
-      messages
-    });
-
-    // Calcul automatique de la marge avec frais notaire 3% (MB)
-    const FRAIS_NOTAIRE_MB = 0.03; // 3% pour MB avec engagement revente <5 ans
-    const prix = parseFloat(prix_demande) || 0;
-    const fraisNotaire = Math.round(prix * FRAIS_NOTAIRE_MB);
-
-    res.json({
-      success: true,
-      mode: 'marchand',
-      mb_societe,
-      bien: {
-        surface,
-        prix_demande: prix,
-        location,
-        strategie,
-        nb_lots,
-        annee_construction
-      },
-      frais_notaire_mb_3pct: fraisNotaire,
-      message_notaire: "⚠️ Frais notaire MB: 3% (article 1115 CGI, engagement de revente <5 ans). Si non revendu sous 5 ans, rattrapage à 5-6% + pénalités.",
-      analysis: response.content[0].text,
-      tokens_used: response.usage
-    });
-
+`;
+    
+    const analysis = await analyzeWithClaude(PROMPTS.marchand, req.files, context);
+    const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
+    
+    res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
-    console.error('Erreur mode marchand:', error);
+    console.error('Erreur marchand:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ===================================================================
-// GÉNÉRATION PDF
-// ===================================================================
+// ============================================================
+// ROUTES FEEDBACK (avec PostgreSQL)
+// ============================================================
 
-// PDF Mode Visite (5-8 pages)
-app.post('/api/pdf/visite', async (req, res) => {
+app.post('/api/feedback', async (req, res) => {
   try {
-    const { analysis, location, surface, date } = req.body;
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const { mode, note, probleme, location, userId } = req.body;
     
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=visite-renoexpert.pdf');
-    doc.pipe(res);
-
-    // Page de garde
-    doc.fontSize(24).fillColor('#2c5aa0').text('RénoExpert', { align: 'center' });
-    doc.fontSize(16).fillColor('#666').text('Rapport de Visite Immobilière', { align: 'center' });
-    doc.moveDown(2);
-    doc.fontSize(12).fillColor('#000');
-    doc.text(`📍 Adresse: ${location || 'Non renseignée'}`);
-    doc.text(`📐 Surface: ${surface || 'Non renseignée'} m²`);
-    doc.text(`📅 Date: ${date || new Date().toLocaleDateString('fr-FR')}`);
-    doc.moveDown(2);
-    
-    // Contenu analyse
-    doc.fontSize(10).text(analysis || '', { align: 'justify' });
-    
-    doc.end();
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// PDF Mode Agent (8-12 pages avec marquage)
-app.post('/api/pdf/agent', async (req, res) => {
-  try {
-    const { analysis, agence_nom, agent_nom, location, surface } = req.body;
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=fiche-agent.pdf');
-    doc.pipe(res);
-
-    // Page de garde avec marquage agence
-    doc.rect(0, 0, 595, 100).fill('#2c5aa0');
-    doc.fontSize(24).fillColor('#fff').text(agence_nom || 'Agence Immobilière', 50, 30);
-    doc.fontSize(12).text(`Agent: ${agent_nom || ''}`, 50, 65);
-    
-    doc.fillColor('#000').moveDown(5);
-    doc.fontSize(20).text('Fiche Technique du Bien', { align: 'center' });
-    doc.moveDown(2);
-    doc.fontSize(12);
-    doc.text(`📍 Adresse: ${location || ''}`);
-    doc.text(`📐 Surface: ${surface || ''} m²`);
-    doc.moveDown(2);
-    
-    doc.fontSize(10).text(analysis || '', { align: 'justify' });
-    
-    doc.end();
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// PDF Mode Marchand (25-30 pages dossier banque)
-app.post('/api/pdf/marchand', async (req, res) => {
-  try {
-    const { 
-      analysis, 
-      mb_societe, 
-      location, 
-      surface, 
-      prix_demande,
-      nb_lots,
-      strategie 
-    } = req.body;
-    
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=dossier-banque-MB.pdf');
-    doc.pipe(res);
-
-    // ============ PAGE 1: GARDE ============
-    doc.rect(0, 0, 595, 842).fill('#1a3a5c');
-    doc.fontSize(36).fillColor('#fff').text(mb_societe || 'Marchand de Biens', 50, 200, { align: 'center' });
-    doc.fontSize(18).fillColor('#ffd700').text('DOSSIER D\'OPÉRATION IMMOBILIÈRE', 50, 280, { align: 'center' });
-    doc.moveDown(2);
-    doc.fontSize(14).fillColor('#fff').text(`📍 ${location || ''}`, { align: 'center' });
-    doc.text(`📐 ${surface || ''} m² habitables`, { align: 'center' });
-    doc.text(`🏢 ${nb_lots || ''} lots prévus`, { align: 'center' });
-    doc.text(`💰 Prix d'acquisition: ${prix_demande || ''} €`, { align: 'center' });
-    
-    doc.fontSize(10).fillColor('#ccc').text('Préparé par RénoExpert v2.0', 50, 750, { align: 'center' });
-    doc.text(new Date().toLocaleDateString('fr-FR'), { align: 'center' });
-    
-    // ============ PAGE 2: SOMMAIRE ============
-    doc.addPage();
-    doc.fillColor('#000');
-    doc.fontSize(24).text('Sommaire', { align: 'center' });
-    doc.moveDown(2);
-    doc.fontSize(12);
-    const sommaire = [
-      '1. Synthèse exécutive ............................ p.3',
-      '2. Présentation du bien .......................... p.4',
-      '3. Diagnostic technique complet .................. p.5',
-      '4. Chiffrage travaux détaillé matériel/MO ........ p.8',
-      '5. Stratégie de division en lots ................. p.12',
-      '6. Étude de marché local ......................... p.14',
-      '7. Plan financier et marge ....................... p.16',
-      '8. Tableau de financement bancaire ............... p.18',
-      '9. Calcul de rentabilité (TRI, marge nette) ...... p.20',
-      '10. Analyse SWOT de l\'opération .................. p.22',
-      '11. Points de vigilance .......................... p.24',
-      '12. Planning sur 18 mois ......................... p.26',
-      '13. Annexes (photos, plans) ...................... p.28'
-    ];
-    sommaire.forEach(line => {
-      doc.text(line);
-      doc.moveDown(0.5);
-    });
-    
-    // ============ PAGE 3: SYNTHÈSE EXÉCUTIVE ============
-    doc.addPage();
-    doc.fontSize(20).fillColor('#1a3a5c').text('1. Synthèse exécutive');
-    doc.moveDown();
-    doc.fontSize(10).fillColor('#000');
-    
-    // Tableau synthèse
-    const FRAIS_NOTAIRE_MB = 0.03;
-    const prix = parseFloat(prix_demande) || 0;
-    const fraisNotaire = Math.round(prix * FRAIS_NOTAIRE_MB);
-    
-    doc.text(`💰 Prix d'acquisition: ${prix.toLocaleString('fr-FR')} €`);
-    doc.text(`📋 Frais notaire MB (3% art.1115 CGI): ${fraisNotaire.toLocaleString('fr-FR')} €`);
-    doc.text(`🏢 Stratégie: ${strategie}`);
-    doc.text(`📊 Nombre de lots: ${nb_lots}`);
-    doc.moveDown();
-    
-    doc.fontSize(11).fillColor('#d32f2f').text('⚠️ AVERTISSEMENT FRAIS NOTAIRE');
-    doc.fontSize(9).fillColor('#000').text(
-      'Les frais notaire MB de 3% s\'appliquent UNIQUEMENT avec engagement de revente sous 5 ans ' +
-      '(article 1115 du Code Général des Impôts). Si le bien n\'est pas revendu dans ce délai, ' +
-      'rattrapage des droits classiques (5-6%) + intérêts de retard.'
+    await pool.query(
+      `INSERT INTO feedbacks (mode, note, probleme, location, user_id) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [mode || 'unknown', note || '', probleme || '', location || '', userId || '']
     );
     
-    doc.addPage();
-    doc.fontSize(20).fillColor('#1a3a5c').text('Analyse IA détaillée');
-    doc.moveDown();
-    doc.fontSize(9).fillColor('#000').text(analysis || '', { align: 'justify' });
-    
-    doc.end();
+    res.json({ success: true });
   } catch (error) {
+    console.error('Erreur feedback:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ===================================================================
-// AUTHENTIFICATION (basique pour démo)
-// ===================================================================
+// ============================================================
+// ROUTES PROJETS (avec PostgreSQL)
+// ============================================================
 
-const users = new Map(); // En production: vraie BDD
-
-app.post('/api/auth/signup', (req, res) => {
-  const { email, password, plan = 'gratuit' } = req.body;
-  if (users.has(email)) {
-    return res.status(400).json({ error: 'Email déjà utilisé' });
-  }
-  users.set(email, { email, password, plan, created: new Date() });
-  res.json({ success: true, token: 'demo-token-' + Date.now() });
-});
-
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  const user = users.get(email);
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: 'Identifiants invalides' });
-  }
-  res.json({ success: true, token: 'demo-token-' + Date.now(), plan: user.plan });
-});
-
-// ===================================================================
-// CALCULATEUR MARGE MB (utilitaire)
-// ===================================================================
-
-app.post('/api/calc/marge-mb', (req, res) => {
-  const {
-    prix_achat,
-    travaux_total,
-    frais_financiers = 0,
-    frais_commerce = 0,
-    honoraires = 0,
-    prix_revente_total,
-    is_taux = 0.25
-  } = req.body;
-
-  // Frais notaire MB: 3% (article 1115 CGI)
-  const frais_notaire = Math.round(prix_achat * 0.03);
-  
-  const total_engage = prix_achat + frais_notaire + travaux_total + 
-                       frais_financiers + frais_commerce + honoraires;
-  
-  const marge_brute = prix_revente_total - total_engage;
-  const marge_nette = Math.round(marge_brute * (1 - is_taux));
-  const rentabilite = ((marge_nette / total_engage) * 100).toFixed(2);
-  
-  res.json({
-    prix_achat,
-    frais_notaire_3pct: frais_notaire,
-    travaux_total,
-    frais_financiers,
-    frais_commerce,
-    honoraires,
-    total_engage,
-    prix_revente_total,
-    marge_brute,
-    marge_nette,
-    rentabilite_pct: rentabilite,
-    avertissement: "Frais notaire MB 3% valable avec engagement revente <5 ans (art.1115 CGI)"
-  });
-});
-
-// ===================================================================
-// SANTÉ DE L'API
-// ===================================================================
-
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    version: '2.0',
-    modes: ['visite', 'reparation', 'agent', 'marchand'],
-    timestamp: new Date().toISOString()
-  });
-});
-
-// ===================================================================
-// DÉMARRAGE
-// ===================================================================
-app.post('/api/pdf/reparation', async (req, res) => {
+app.post('/api/projets/save', async (req, res) => {
   try {
-    const { analysis, description, date } = req.body;
-    
-    if (!analysis) {
-      return res.status(400).json({ error: 'Analyse manquante' });
-    }
-    
-    // Génération du PDF avec PDFKit
-    const PDFDocument = require('pdfkit');
-    const doc = new PDFDocument({
-      size: 'A4',
-      margin: 50,
-      info: {
-        Title: 'Guide Réparation RénoExpert',
-        Author: 'RénoExpert',
-        Subject: 'Guide pratique de réparation'
-      }
-    });
-    
-    // Headers HTTP pour téléchargement PDF
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="guide-reparation.pdf"');
-    
-    doc.pipe(res);
-    
-    // ============== EN-TÊTE ==============
-    // Bandeau bleu en haut
-    doc.rect(0, 0, doc.page.width, 80).fill('#0066ff');
-    
-    // Logo / Titre
-    doc.fillColor('white')
-       .fontSize(24)
-       .font('Helvetica-Bold')
-       .text('RénoExpert', 50, 25);
-    
-    doc.fontSize(11)
-       .font('Helvetica')
-       .text('Guide pratique de réparation', 50, 55);
-    
-    // Date à droite
-    doc.fontSize(10)
-       .text(date || new Date().toLocaleDateString('fr-FR'), 50, 25, {
-         align: 'right',
-         width: doc.page.width - 100
-       });
-    
-    // ============== BANDEAU CONSEILS ==============
-    doc.fillColor('#0a0e27').fontSize(11);
-    doc.moveDown(3);
-    
-    // Encadré "À lire avant de commencer"
-    const yStart = doc.y + 10;
-    doc.rect(50, yStart, doc.page.width - 100, 60)
-       .fillAndStroke('#fff4e6', '#ffaa00');
-    
-    doc.fillColor('#c25a00')
-       .fontSize(11)
-       .font('Helvetica-Bold')
-       .text('⚠️ À LIRE AVANT DE COMMENCER', 60, yStart + 10);
-    
-    doc.fillColor('#5e6987')
-       .fontSize(9)
-       .font('Helvetica')
-       .text('• Coupez l\'électricité et l\'eau si nécessaire\n• Portez les EPI adaptés (gants, lunettes, masque)\n• En cas de doute, faites appel à un professionnel', 60, yStart + 27, {
-         width: doc.page.width - 120,
-         lineGap: 2
-       });
-    
-    doc.y = yStart + 80;
-    doc.moveDown();
-    
-    // ============== DESCRIPTION DU PROBLÈME ==============
-    if (description && description.trim()) {
-      doc.fillColor('#0066ff')
-         .fontSize(13)
-         .font('Helvetica-Bold')
-         .text('📋 Problème signalé');
-      
-      doc.moveDown(0.5);
-      doc.fillColor('#0a0e27')
-         .fontSize(10)
-         .font('Helvetica')
-         .text(description, {
-           width: doc.page.width - 100,
-           lineGap: 3
-         });
-      
-      doc.moveDown();
-    }
-    
-    // ============== CONTENU ANALYSE ==============
-    doc.fillColor('#0066ff')
-       .fontSize(13)
-       .font('Helvetica-Bold')
-       .text('🔧 Diagnostic & procédure de réparation');
-    
-    doc.moveDown(0.5);
-    
-    // Traitement du markdown simple
-    const lines = analysis.split('\n');
-    
-    for (let line of lines) {
-      // Vérifier si on doit passer à la page suivante
-      if (doc.y > doc.page.height - 100) {
-        doc.addPage();
-      }
-      
-      line = line.trim();
-      if (!line) {
-        doc.moveDown(0.3);
-        continue;
-      }
-      
-      // Titre H1 (#)
-      if (line.startsWith('# ')) {
-        doc.moveDown(0.3);
-        doc.fillColor('#0052cc')
-           .fontSize(14)
-           .font('Helvetica-Bold')
-           .text(line.replace(/^#\s+/, ''), { width: doc.page.width - 100 });
-        doc.moveDown(0.2);
-      }
-      // Titre H2 (##)
-      else if (line.startsWith('## ')) {
-        doc.moveDown(0.3);
-        doc.fillColor('#0066ff')
-           .fontSize(12)
-           .font('Helvetica-Bold')
-           .text(line.replace(/^##\s+/, ''), { width: doc.page.width - 100 });
-        doc.moveDown(0.2);
-      }
-      // Titre H3 (###)
-      else if (line.startsWith('### ')) {
-        doc.fillColor('#4d94ff')
-           .fontSize(11)
-           .font('Helvetica-Bold')
-           .text(line.replace(/^###\s+/, ''), { width: doc.page.width - 100 });
-        doc.moveDown(0.2);
-      }
-      // Liste à puces
-      else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ')) {
-        const text = line.replace(/^[\-•\*]\s+/, '');
-        doc.fillColor('#0a0e27')
-           .fontSize(10)
-           .font('Helvetica')
-           .text('• ' + text.replace(/\*\*(.*?)\*\*/g, '$1'), 
-             50, doc.y, 
-             { width: doc.page.width - 100, indent: 10, lineGap: 2 });
-      }
-      // Texte normal
-      else {
-        // Retire le markdown gras **texte**
-        const cleanLine = line.replace(/\*\*(.*?)\*\*/g, '$1');
-        doc.fillColor('#0a0e27')
-           .fontSize(10)
-           .font('Helvetica')
-           .text(cleanLine, { width: doc.page.width - 100, lineGap: 2 });
-      }
-    }
-    
-    // ============== PIED DE PAGE ==============
-    // Ajouter pied de page sur la dernière page
-    doc.moveDown(2);
-    
-    if (doc.y > doc.page.height - 100) {
-      doc.addPage();
-    }
-    
-    // Ligne séparation
-    doc.moveTo(50, doc.y)
-       .lineTo(doc.page.width - 50, doc.y)
-       .strokeColor('#e1e8f5')
-       .stroke();
-    
-    doc.moveDown(0.5);
-    
-    doc.fillColor('#5e6987')
-       .fontSize(9)
-       .font('Helvetica-Oblique')
-       .text('Ce guide a été généré par RénoExpert - L\'IA des pros du bâtiment.', { align: 'center' });
-    
-    doc.fontSize(8)
-       .text('Les recommandations sont indicatives. En cas de travaux importants ou de doute, consultez un professionnel qualifié.', { align: 'center' });
-    
-    doc.moveDown(0.3);
-    doc.fontSize(8).text('© RénoExpert ' + new Date().getFullYear() + ' - renoexpert.fr', { align: 'center' });
-    
-    // Fin du document
-    doc.end();
-    
-  } catch (error) {
-    console.error('Erreur PDF Réparation:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ===================================================================
-// ROUTES HISTORIQUE DES PROJETS
-// Sauvegarde et récupération des analyses de chaque utilisateur
-// ===================================================================
-
-// Stockage simple en mémoire (suffisant pour démarrer)
-// ⚠️ Note : les données se perdent si Railway redémarre le serveur
-// Pour persistence permanente, utiliser PostgreSQL plus tard
-const projetsDB = {};  // { userId: [projets] }
-
-// ===== SAUVEGARDER UN PROJET =====
-app.post('/api/projets/save', (req, res) => {
-  try {
-    const {
-      userId,        // identifiant utilisateur (email ou ID navigateur)
-      mode,          // 'visite', 'reparation', 'agent', 'marchand'
-      titre,         // titre du projet (ex: "Maison Compiègne")
-      analysis,      // texte de l'analyse
-      data           // toutes les autres données (location, surface, etc.)
-    } = req.body;
+    const { userId, mode, titre, analysis, data } = req.body;
     
     if (!userId || !mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
     }
     
-    if (!projetsDB[userId]) {
-      projetsDB[userId] = [];
-    }
+    const result = await pool.query(
+      `INSERT INTO projets (user_id, mode, titre, analysis, data) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [userId, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {})]
+    );
     
-    const projet = {
-      id: Date.now().toString(),
-      userId,
-      mode,
-      titre: titre || `Projet ${mode} ${new Date().toLocaleDateString('fr-FR')}`,
-      analysis,
-      data: data || {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    projetsDB[userId].unshift(projet);  // Ajouter en début
-    
-    // Limite à 50 projets par utilisateur
-    if (projetsDB[userId].length > 50) {
-      projetsDB[userId] = projetsDB[userId].slice(0, 50);
-    }
+    // Compter le total de projets pour cet utilisateur
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM projets WHERE user_id = $1',
+      [userId]
+    );
     
     res.json({
       success: true,
-      projet_id: projet.id,
-      total_projets: projetsDB[userId].length
+      projet_id: result.rows[0].id,
+      total_projets: parseInt(countResult.rows[0].count)
     });
-    
   } catch (error) {
     console.error('Erreur save projet:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ===== LISTER LES PROJETS D'UN UTILISATEUR =====
-app.get('/api/projets/list', (req, res) => {
+app.get('/api/projets/list', async (req, res) => {
   try {
     const userId = req.query.userId;
     if (!userId) {
       return res.status(400).json({ error: 'userId manquant' });
     }
     
-    const projets = projetsDB[userId] || [];
+    const result = await pool.query(
+      `SELECT id, mode, titre, analysis, data, created_at 
+       FROM projets 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 50`,
+      [userId]
+    );
     
-    // Renvoie juste les infos résumées (pas l'analyse complète)
-    const liste = projets.map(p => ({
-      id: p.id,
+    const liste = result.rows.map(p => ({
+      id: p.id.toString(),
       mode: p.mode,
       titre: p.titre,
       created_at: p.created_at,
-      location: p.data.location || '',
-      surface: p.data.surface || '',
-      preview: p.analysis.substring(0, 150) + '...'
+      location: (p.data && p.data.location) || '',
+      surface: (p.data && p.data.surface) || '',
+      preview: (p.analysis || '').substring(0, 150) + '...'
     }));
     
     res.json({
@@ -981,14 +476,13 @@ app.get('/api/projets/list', (req, res) => {
       total: liste.length,
       projets: liste
     });
-    
   } catch (error) {
+    console.error('Erreur list projets:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ===== RÉCUPÉRER UN PROJET COMPLET =====
-app.get('/api/projets/:id', (req, res) => {
+app.get('/api/projets/:id', async (req, res) => {
   try {
     const userId = req.query.userId;
     const projetId = req.params.id;
@@ -997,22 +491,35 @@ app.get('/api/projets/:id', (req, res) => {
       return res.status(400).json({ error: 'userId manquant' });
     }
     
-    const projets = projetsDB[userId] || [];
-    const projet = projets.find(p => p.id === projetId);
+    const result = await pool.query(
+      'SELECT * FROM projets WHERE id = $1 AND user_id = $2',
+      [projetId, userId]
+    );
     
-    if (!projet) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Projet non trouvé' });
     }
     
-    res.json({ success: true, projet });
-    
+    const p = result.rows[0];
+    res.json({
+      success: true,
+      projet: {
+        id: p.id.toString(),
+        userId: p.user_id,
+        mode: p.mode,
+        titre: p.titre,
+        analysis: p.analysis,
+        data: p.data || {},
+        created_at: p.created_at
+      }
+    });
   } catch (error) {
+    console.error('Erreur get projet:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ===== SUPPRIMER UN PROJET =====
-app.delete('/api/projets/:id', (req, res) => {
+app.delete('/api/projets/:id', async (req, res) => {
   try {
     const userId = req.query.userId;
     const projetId = req.params.id;
@@ -1021,368 +528,358 @@ app.delete('/api/projets/:id', (req, res) => {
       return res.status(400).json({ error: 'userId manquant' });
     }
     
-    if (!projetsDB[userId]) {
-      return res.status(404).json({ error: 'Aucun projet' });
-    }
+    const result = await pool.query(
+      'DELETE FROM projets WHERE id = $1 AND user_id = $2 RETURNING id',
+      [projetId, userId]
+    );
     
-    const initialLength = projetsDB[userId].length;
-    projetsDB[userId] = projetsDB[userId].filter(p => p.id !== projetId);
-    
-    if (projetsDB[userId].length === initialLength) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Projet non trouvé' });
     }
+    
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM projets WHERE user_id = $1',
+      [userId]
+    );
     
     res.json({
       success: true,
-      remaining: projetsDB[userId].length
+      remaining: parseInt(countResult.rows[0].count)
     });
-    
   } catch (error) {
+    console.error('Erreur delete projet:', error);
     res.status(500).json({ error: error.message });
   }
 });
-// Variable d'environnement pour le token admin
-// Sur Railway : Variables → Ajoute ADMIN_TOKEN = ton_mot_de_passe_secret
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
- 
-// ===================================================================
-// ROUTE DASHBOARD ADMIN - Afficher les feedbacks
-// ===================================================================
- 
-app.get('/admin/feedbacks', (req, res) => {
+
+// ============================================================
+// ROUTES PDF
+// ============================================================
+
+function setupPDF(res, filename) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  return doc;
+}
+
+function renderMarkdownToPDF(doc, text) {
+  const lines = text.split('\n');
+  for (let line of lines) {
+    if (doc.y > doc.page.height - 100) doc.addPage();
+    line = line.trim();
+    if (!line) { doc.moveDown(0.3); continue; }
+    
+    if (line.startsWith('# ')) {
+      doc.moveDown(0.3);
+      doc.fillColor('#0052cc').fontSize(14).font('Helvetica-Bold')
+         .text(line.replace(/^#\s+/, ''), { width: doc.page.width - 100 });
+      doc.moveDown(0.2);
+    } else if (line.startsWith('## ')) {
+      doc.moveDown(0.3);
+      doc.fillColor('#0066ff').fontSize(12).font('Helvetica-Bold')
+         .text(line.replace(/^##\s+/, ''), { width: doc.page.width - 100 });
+      doc.moveDown(0.2);
+    } else if (line.startsWith('### ')) {
+      doc.fillColor('#4d94ff').fontSize(11).font('Helvetica-Bold')
+         .text(line.replace(/^###\s+/, ''), { width: doc.page.width - 100 });
+      doc.moveDown(0.2);
+    } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ')) {
+      const text = line.replace(/^[\-•\*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1');
+      doc.fillColor('#0a0e27').fontSize(10).font('Helvetica')
+         .text('• ' + text, { width: doc.page.width - 100, indent: 10, lineGap: 2 });
+    } else {
+      const cleanLine = line.replace(/\*\*(.*?)\*\*/g, '$1');
+      doc.fillColor('#0a0e27').fontSize(10).font('Helvetica')
+         .text(cleanLine, { width: doc.page.width - 100, lineGap: 2 });
+    }
+  }
+}
+
+function pdfHeader(doc, title, subtitle) {
+  doc.rect(0, 0, doc.page.width, 80).fill('#0066ff');
+  doc.fillColor('white').fontSize(24).font('Helvetica-Bold').text('RénoExpert', 50, 25);
+  doc.fontSize(11).font('Helvetica').text(subtitle, 50, 55);
+  doc.fontSize(10).text(new Date().toLocaleDateString('fr-FR'), 50, 25, {
+    align: 'right', width: doc.page.width - 100
+  });
+  doc.fillColor('#0a0e27').fontSize(11);
+  doc.y = 110;
+}
+
+// PDF VISITE
+app.post('/api/pdf/visite', async (req, res) => {
   try {
-    // Vérification du token admin
-    const token = req.query.token || req.headers.authorization;
+    const { analysis, location, surface, date } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    
+    const doc = setupPDF(res, 'visite-renoexpert.pdf');
+    pdfHeader(doc, 'Diagnostic Visite', 'Diagnostic immobilier pour visite achat');
+    
+    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('📍 Informations du bien');
+    doc.moveDown(0.3);
+    doc.fillColor('#0a0e27').fontSize(11).font('Helvetica')
+       .text(`Adresse : ${location || 'N/A'}`)
+       .text(`Surface : ${surface || 'N/A'} m²`)
+       .text(`Date : ${date || new Date().toLocaleDateString('fr-FR')}`);
+    doc.moveDown();
+    
+    renderMarkdownToPDF(doc, analysis);
+    doc.end();
+  } catch (error) {
+    console.error('Erreur PDF visite:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PDF RÉPARATION
+app.post('/api/pdf/reparation', async (req, res) => {
+  try {
+    const { analysis, description, date } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    
+    const doc = setupPDF(res, 'guide-reparation.pdf');
+    pdfHeader(doc, 'Guide Réparation', 'Guide pratique de réparation');
+    
+    // Encadré sécurité
+    const yStart = doc.y;
+    doc.rect(50, yStart, doc.page.width - 100, 60).fillAndStroke('#fff4e6', '#ffaa00');
+    doc.fillColor('#c25a00').fontSize(11).font('Helvetica-Bold')
+       .text('⚠️ À LIRE AVANT DE COMMENCER', 60, yStart + 10);
+    doc.fillColor('#5e6987').fontSize(9).font('Helvetica')
+       .text('• Coupez l\'électricité et l\'eau si nécessaire\n• Portez les EPI adaptés (gants, lunettes, masque)\n• En cas de doute, faites appel à un professionnel',
+         60, yStart + 27, { width: doc.page.width - 120, lineGap: 2 });
+    doc.y = yStart + 80;
+    doc.moveDown();
+    
+    if (description) {
+      doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('📋 Problème signalé');
+      doc.moveDown(0.5);
+      doc.fillColor('#0a0e27').fontSize(10).font('Helvetica').text(description, { width: doc.page.width - 100, lineGap: 3 });
+      doc.moveDown();
+    }
+    
+    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('🔧 Diagnostic & réparation');
+    doc.moveDown(0.5);
+    renderMarkdownToPDF(doc, analysis);
+    doc.end();
+  } catch (error) {
+    console.error('Erreur PDF reparation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PDF AGENT
+app.post('/api/pdf/agent', async (req, res) => {
+  try {
+    const { analysis, agence_nom, agent_nom, location, surface } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    
+    const doc = setupPDF(res, 'fiche-agent.pdf');
+    pdfHeader(doc, 'Fiche Commerciale', `${agence_nom || 'Agence'} - Fiche pro`);
+    
+    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('🏢 Informations agence');
+    doc.moveDown(0.3);
+    doc.fillColor('#0a0e27').fontSize(11).font('Helvetica')
+       .text(`Agence : ${agence_nom || 'N/A'}`)
+       .text(`Agent : ${agent_nom || 'N/A'}`)
+       .text(`Bien : ${location || 'N/A'}`)
+       .text(`Surface : ${surface || 'N/A'} m²`);
+    doc.moveDown();
+    
+    renderMarkdownToPDF(doc, analysis);
+    doc.end();
+  } catch (error) {
+    console.error('Erreur PDF agent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PDF MARCHAND
+app.post('/api/pdf/marchand', async (req, res) => {
+  try {
+    const { analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    
+    const doc = setupPDF(res, 'dossier-banque.pdf');
+    pdfHeader(doc, 'Dossier Marchand de Biens', 'Dossier pour banque - Article 1115 CGI');
+    
+    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('💼 Identification opération');
+    doc.moveDown(0.3);
+    doc.fillColor('#0a0e27').fontSize(11).font('Helvetica')
+       .text(`Société MB : ${mb_societe || 'N/A'}`)
+       .text(`Adresse : ${location || 'N/A'}`)
+       .text(`Surface : ${surface || 'N/A'} m²`)
+       .text(`Prix demandé : ${prix_demande ? Number(prix_demande).toLocaleString('fr-FR') + ' €' : 'N/A'}`)
+       .text(`Stratégie : ${strategie || 'N/A'}`)
+       .text(`Nombre de lots : ${nb_lots || 'N/A'}`);
+    doc.moveDown();
+    
+    renderMarkdownToPDF(doc, analysis);
+    doc.end();
+  } catch (error) {
+    console.error('Erreur PDF marchand:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// DASHBOARD ADMIN
+// ============================================================
+
+app.get('/admin/feedbacks', async (req, res) => {
+  try {
+    const token = req.query.token;
     
     if (!token || token !== ADMIN_TOKEN) {
       return res.status(401).send(`
         <!DOCTYPE html>
-        <html lang="fr">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Admin - Authentification</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              min-height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              padding: 20px;
-            }
-            .login-box {
-              background: white;
-              border-radius: 16px;
-              padding: 40px;
-              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-              max-width: 400px;
-              width: 100%;
-            }
-            h1 { color: #333; margin-bottom: 10px; font-size: 24px; }
-            p { color: #666; margin-bottom: 30px; font-size: 14px; }
-            input {
-              width: 100%;
-              padding: 12px 16px;
-              border: 2px solid #e0e0e0;
-              border-radius: 8px;
-              font-size: 15px;
-              margin-bottom: 20px;
-            }
-            input:focus { outline: none; border-color: #667eea; }
-            button {
-              width: 100%;
-              padding: 12px;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              border: none;
-              border-radius: 8px;
-              font-size: 16px;
-              font-weight: 600;
-              cursor: pointer;
-            }
-            button:hover { opacity: 0.9; }
-            .error { color: #f44336; font-size: 13px; margin-top: -10px; margin-bottom: 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="login-box">
-            <h1>🔐 Admin RénoExpert</h1>
-            <p>Entrez le token d'administration</p>
-            <form method="GET">
-              <input type="password" name="token" placeholder="Token admin" required autofocus>
-              ${token && token !== ADMIN_TOKEN ? '<div class="error">❌ Token incorrect</div>' : ''}
-              <button type="submit">🔓 Se connecter</button>
-            </form>
-          </div>
-        </body>
-        </html>
+        <html><head><meta charset="UTF-8"><title>Admin</title>
+        <style>
+          body{font-family:sans-serif;background:linear-gradient(135deg,#0066ff,#4d94ff);min-height:100vh;display:flex;align-items:center;justify-content:center;margin:0;padding:20px}
+          .box{background:white;padding:40px;border-radius:16px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+          h1{color:#0066ff;margin-bottom:10px}
+          p{color:#666;margin-bottom:20px;font-size:14px}
+          input{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:8px;font-size:15px;margin-bottom:15px;box-sizing:border-box}
+          button{width:100%;padding:12px;background:#0066ff;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer}
+          .err{color:#f44336;font-size:13px;margin-bottom:10px}
+        </style></head>
+        <body><div class="box">
+          <h1>🔐 Admin RénoExpert</h1>
+          <p>Entrez votre token d'administration</p>
+          ${token && token !== ADMIN_TOKEN ? '<div class="err">❌ Token incorrect</div>' : ''}
+          <form method="GET">
+            <input type="password" name="token" placeholder="Token admin" required autofocus>
+            <button>🔓 Se connecter</button>
+          </form>
+        </div></body></html>
       `);
     }
     
-    // Si authentifié → afficher le dashboard
+    // Récupérer les stats depuis PostgreSQL
+    const feedbacksResult = await pool.query(
+      'SELECT * FROM feedbacks ORDER BY created_at DESC LIMIT 100'
+    );
+    const feedbacks = feedbacksResult.rows;
     
-    // Récupérer les feedbacks (depuis la variable globale ou base de données)
-    // Note : tu dois avoir une variable "feedbacks" quelque part dans ton code
-    // Si tu utilises une base de données, adapte cette partie
-    const allFeedbacks = global.feedbacks || [];
-    
-    // Statistiques
-    const total = allFeedbacks.length;
-    const positifs = allFeedbacks.filter(f => f.note === '👍').length;
-    const neutres = allFeedbacks.filter(f => f.note === '👌').length;
-    const negatifs = allFeedbacks.filter(f => f.note === '👎').length;
-    const satisfaction = total > 0 ? Math.round((positifs / total) * 100) : 0;
+    const total = feedbacks.length;
+    const positifs = feedbacks.filter(f => f.note === '👍').length;
+    const neutres = feedbacks.filter(f => f.note === '👌').length;
+    const negatifs = feedbacks.filter(f => f.note === '👎').length;
+    const satisfaction = total > 0 ? Math.round(((positifs + neutres) / total) * 100) : 0;
     
     const parMode = {};
-    allFeedbacks.forEach(f => {
-      parMode[f.mode] = (parMode[f.mode] || 0) + 1;
-    });
+    feedbacks.forEach(f => { parMode[f.mode] = (parMode[f.mode] || 0) + 1; });
     
-    // HTML du dashboard
+    // Stats projets
+    const projetsResult = await pool.query('SELECT COUNT(*) as total, COUNT(DISTINCT user_id) as users FROM projets');
+    const totalProjets = parseInt(projetsResult.rows[0].total);
+    const totalUsers = parseInt(projetsResult.rows[0].users);
+    
     res.send(`
       <!DOCTYPE html>
-      <html lang="fr">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Admin - Feedbacks RénoExpert</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-          }
-          .container { max-width: 1200px; margin: 0 auto; }
-          header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-          }
-          h1 { font-size: 28px; margin-bottom: 5px; }
-          .subtitle { opacity: 0.9; font-size: 14px; }
-          
-          .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-          }
-          .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          }
-          .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #667eea;
-            margin-bottom: 5px;
-          }
-          .stat-label {
-            color: #666;
-            font-size: 13px;
-          }
-          
-          .section {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-          }
-          h2 {
-            font-size: 18px;
-            margin-bottom: 20px;
-            color: #333;
-          }
-          
-          table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-          th {
-            background: #f8f9fa;
-            padding: 12px;
-            text-align: left;
-            font-size: 13px;
-            color: #666;
-            font-weight: 600;
-            border-bottom: 2px solid #e0e0e0;
-          }
-          td {
-            padding: 12px;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 14px;
-            color: #333;
-          }
-          tr:hover { background: #f8f9fa; }
-          
-          .note {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 16px;
-          }
-          .note.positif { background: #e8f5e9; }
-          .note.neutre { background: #fff4e6; }
-          .note.negatif { background: #ffebee; }
-          
-          .mode {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            background: #e3f2fd;
-            color: #1976d2;
-          }
-          
-          .probleme {
-            color: #666;
-            font-size: 13px;
-            max-width: 300px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-          
-          .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-top: 10px;
-          }
-          .btn:hover { opacity: 0.9; }
-          
-          .empty {
-            text-align: center;
-            padding: 60px 20px;
-            color: #999;
-          }
-          .empty-icon { font-size: 48px; margin-bottom: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          
-          <header>
-            <h1>📊 Dashboard Admin RénoExpert</h1>
-            <div class="subtitle">Feedbacks utilisateurs en temps réel</div>
-          </header>
-          
-          <div class="stats">
-            <div class="stat-card">
-              <div class="stat-value">${total}</div>
-              <div class="stat-label">Total feedbacks</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value">${satisfaction}%</div>
-              <div class="stat-label">Satisfaction</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value">${negatifs}</div>
-              <div class="stat-label">À corriger</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value">${parMode['marchand'] || 0}</div>
-              <div class="stat-label">Mode MB</div>
-            </div>
-          </div>
-          
-          <div class="section">
-            <h2>📋 Tous les feedbacks</h2>
-            
-            ${total === 0 ? `
-              <div class="empty">
-                <div class="empty-icon">📭</div>
-                <div>Aucun feedback pour le moment</div>
-              </div>
-            ` : `
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Mode</th>
-                    <th>Note</th>
-                    <th>Localisation</th>
-                    <th>Problème signalé</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${allFeedbacks.slice(0, 50).reverse().map(f => `
-                    <tr>
-                      <td>${new Date(f.timestamp).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</td>
-                      <td><span class="mode">${f.mode || 'N/A'}</span></td>
-                      <td><span class="note ${f.note === '👍' ? 'positif' : f.note === '👎' ? 'negatif' : 'neutre'}">${f.note}</span></td>
-                      <td>${f.location || '-'}</td>
-                      <td><div class="probleme">${f.probleme || '-'}</div></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-              
-              <a href="/admin/feedbacks/export?token=${token}" class="btn">📥 Télécharger CSV</a>
-            `}
-          </div>
-          
+      <html><head><meta charset="UTF-8"><title>Admin - RénoExpert</title>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,sans-serif;background:#f5f7fb;padding:20px}
+        .container{max-width:1200px;margin:0 auto}
+        header{background:linear-gradient(135deg,#0066ff,#4d94ff);color:white;padding:30px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,102,255,0.2)}
+        h1{font-size:26px;margin-bottom:6px}
+        .subtitle{opacity:0.9;font-size:14px}
+        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+        .stat-card{background:white;padding:20px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.05);border:1px solid #e8eef7}
+        .stat-value{font-size:32px;font-weight:800;color:#0066ff;margin-bottom:4px;letter-spacing:-1px}
+        .stat-label{color:#5e6987;font-size:12px;font-weight:500}
+        .section{background:white;padding:24px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.05);margin-bottom:20px;border:1px solid #e8eef7}
+        h2{font-size:18px;margin-bottom:18px;color:#0a0e27;font-weight:700}
+        table{width:100%;border-collapse:collapse}
+        th{background:#f5f7fb;padding:12px;text-align:left;font-size:12px;color:#5e6987;font-weight:600;border-bottom:2px solid #e8eef7;text-transform:uppercase;letter-spacing:0.3px}
+        td{padding:12px;border-bottom:1px solid #f0f3f8;font-size:14px;color:#0a0e27}
+        tr:hover{background:#f8faff}
+        .note{display:inline-block;padding:4px 10px;border-radius:10px;font-size:16px}
+        .note.positif{background:#e6ffec}
+        .note.neutre{background:#fff4e6}
+        .note.negatif{background:#ffe6e8}
+        .mode{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:#e6f0ff;color:#0052cc}
+        .probleme{color:#5e6987;font-size:13px;max-width:400px}
+        .btn{display:inline-block;padding:10px 20px;background:#0066ff;color:white;text-decoration:none;border-radius:10px;font-size:13px;font-weight:600;margin-top:12px}
+        .btn:hover{background:#0052cc}
+        .empty{text-align:center;padding:60px 20px;color:#8b95b0}
+        .empty-icon{font-size:48px;margin-bottom:10px}
+        .badge-db{display:inline-block;background:rgba(255,255,255,0.2);padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;margin-left:10px}
+      </style></head>
+      <body><div class="container">
+        <header>
+          <h1>📊 Dashboard Admin RénoExpert <span class="badge-db">🗄️ PostgreSQL</span></h1>
+          <div class="subtitle">Vos données sont sauvegardées de manière permanente</div>
+        </header>
+        
+        <div class="stats">
+          <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Total feedbacks</div></div>
+          <div class="stat-card"><div class="stat-value">${satisfaction}%</div><div class="stat-label">Satisfaction</div></div>
+          <div class="stat-card"><div class="stat-value">${negatifs}</div><div class="stat-label">À corriger</div></div>
+          <div class="stat-card"><div class="stat-value">${totalUsers}</div><div class="stat-label">Utilisateurs</div></div>
+          <div class="stat-card"><div class="stat-value">${totalProjets}</div><div class="stat-label">Projets sauvegardés</div></div>
         </div>
-      </body>
-      </html>
+        
+        <div class="section">
+          <h2>📋 Tous les feedbacks (${total})</h2>
+          ${total === 0 ? `
+            <div class="empty"><div class="empty-icon">📭</div><div>Aucun feedback pour le moment</div></div>
+          ` : `
+            <table>
+              <thead><tr><th>Date</th><th>Mode</th><th>Note</th><th>Lieu</th><th>Problème signalé</th></tr></thead>
+              <tbody>
+                ${feedbacks.map(f => `
+                  <tr>
+                    <td>${new Date(f.created_at).toLocaleDateString('fr-FR')} ${new Date(f.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
+                    <td><span class="mode">${f.mode || 'N/A'}</span></td>
+                    <td><span class="note ${f.note === '👍' ? 'positif' : f.note === '👎' ? 'negatif' : 'neutre'}">${f.note}</span></td>
+                    <td>${f.location || '-'}</td>
+                    <td class="probleme">${f.probleme || '-'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <a href="/admin/feedbacks/export?token=${encodeURIComponent(token)}" class="btn">📥 Télécharger CSV</a>
+          `}
+        </div>
+      </div></body></html>
     `);
-    
   } catch (error) {
-    console.error('Erreur dashboard admin:', error);
-    res.status(500).send('Erreur serveur: ' + error.message);
+    console.error('Erreur dashboard:', error);
+    res.status(500).send('Erreur: ' + error.message);
   }
 });
- 
-// ===================================================================
-// ROUTE EXPORT CSV
-// ===================================================================
- 
-app.get('/admin/feedbacks/export', (req, res) => {
+
+app.get('/admin/feedbacks/export', async (req, res) => {
   try {
     const token = req.query.token;
-    if (!token || token !== ADMIN_TOKEN) {
-      return res.status(401).send('Non autorisé');
-    }
+    if (!token || token !== ADMIN_TOKEN) return res.status(401).send('Non autorisé');
     
-    const allFeedbacks = global.feedbacks || [];
+    const result = await pool.query('SELECT * FROM feedbacks ORDER BY created_at DESC');
     
-    // Générer CSV
-    let csv = 'Date,Mode,Note,Localisation,Probleme\n';
-    allFeedbacks.forEach(f => {
-      csv += `${new Date(f.timestamp).toLocaleDateString('fr-FR')},${f.mode || ''},${f.note},${f.location || ''},"${(f.probleme || '').replace(/"/g, '""')}"\n`;
+    let csv = 'Date,Heure,Mode,Note,Localisation,Probleme\n';
+    result.rows.forEach(f => {
+      const d = new Date(f.created_at);
+      csv += `${d.toLocaleDateString('fr-FR')},${d.toLocaleTimeString('fr-FR')},${f.mode || ''},${f.note},${f.location || ''},"${(f.probleme || '').replace(/"/g, '""')}"\n`;
     });
     
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="feedbacks-renoexpert.csv"');
-    res.send('\uFEFF' + csv); // BOM pour Excel
-    
+    res.send('\uFEFF' + csv);
   } catch (error) {
-    res.status(500).send('Erreur export: ' + error.message);
+    res.status(500).send('Erreur: ' + error.message);
   }
 });
- 
-// ===================================================================
-// FIN DU CODE DASHBOARD ADMIN
-// ===================================================================
-app.listen(PORT, () => {
-  console.log(`🚀 RénoExpert v2.0 backend démarré sur le port ${PORT}`);
-  console.log(`📋 4 modes actifs: Visite, Réparation, Agent, Marchand`);
-  console.log(`💰 Frais notaire MB: 3% (article 1115 CGI)`);
-});
 
-module.exports = app;
+// ============================================================
+// DÉMARRAGE
+// ============================================================
+
+app.listen(PORT, () => {
+  console.log(`🚀 RénoExpert Backend v3.2 lancé sur le port ${PORT}`);
+  console.log(`🗄️ PostgreSQL : ${process.env.DATABASE_URL ? 'connecté' : 'NON CONFIGURÉ ⚠️'}`);
+  console.log(`🔑 Admin token : ${ADMIN_TOKEN === 'admin123' ? '⚠️ Token par défaut, à changer !' : '✅ configuré'}`);
+});
