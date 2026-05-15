@@ -161,7 +161,7 @@ async function sendEmail(to, subject, htmlContent) {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        sender: { name: 'RénoExpert', email: 'noreply@renoexpert.fr' },
+        sender: { name: 'RénoExpert', email: 'baglieriyoann@gmail.com' },
         to: [{ email: to }],
         subject,
         htmlContent
