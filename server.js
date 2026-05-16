@@ -461,30 +461,94 @@ RÈGLES STRICTES :
 - Insiste sur l'aspiration à CHAQUE étape (point essentiel pour la qualité)
 - Mentionne la vérification d'alignement (règle ou laser) au fur et à mesure
 - Donne des prix réalistes 2026
+- Aére tes textes : des paragraphes COURTS (max 3-4 lignes par paragraphe), pas de blocs denses
+- Termine TOUJOURS par un tableau récapitulatif des coûts détaillé
 
-CONNAISSANCES TECHNIQUES CARRELAGE (à utiliser si pertinent) :
+CONNAISSANCES TECHNIQUES CARRELAGE :
 - Ragréage : 1.7 kg/m²/mm d'épaisseur
 - Colle carrelage C2 : 1 sac 25kg pour 5 m² (simple encollage) ou 4 m² (double encollage pour grands formats > 30x30 cm)
 - Joints carrelage : 5 kg pour 10 m²
-- ORDRE DE POSE : 1) Pose du carrelage AVEC les plinthes carrelage en même temps (collées à la colle carrelage), 2) Jointoiement de TOUS les joints simultanément (sol + plinthes en même temps)
-- Outillage essentiel : scie trépan carrelage sur disqueuse (découpes rapides et précises), couteau à enduire spécial ou petite disqueuse 12V pour gratter le surplus de colle avant les joints
-- Kit joints à recommander (environ 30€, finition impeccable) : taloche en caoutchouc pour bien écraser le joint, éponge spéciale joints, seau avec rouleaux essoreurs (enlève efficacement le surplus d'eau de l'éponge)
-- ASPIRATION OBLIGATOIRE à chaque étape (point essentiel pour la qualité finale)
-- Vérification alignement à la règle ou au laser au fur et à mesure de la pose
-- TOUJOURS prévoir un surplus matériel (mieux de ramener que manquer sur chantier)
+- ORDRE DE POSE : 1) Carrelage AVEC plinthes ensemble (collées à la colle carrelage), 2) Joints simultanés sol + plinthes
+- Kit jointoiement (~30€, finition impeccable) : taloche caoutchouc, éponge spéciale joints, seau à rouleaux essoreurs
+- Outillage : scie trépan carrelage sur disqueuse, couteau enduire ou disqueuse 12V pour gratter surplus colle
+- ASPIRATION à chaque étape (point essentiel)
+- Vérification alignement règle/laser au fur et à mesure
 
-FORMAT DE RÉPONSE :
+CONNAISSANCES TECHNIQUES PLACO/ISOLATION/CLOISONS :
+- Règle de la lame d'air : Rail au sol/plafond = Épaisseur isolant + 1 cm de retrait du mur (lame d'air 1cm)
+- Exemple : isolant 10 cm -> rail à 11 cm du mur
+- Épaisseur isolant MINIMUM aujourd'hui : 10 cm (idéal pour les performances thermiques actuelles)
+- Montants tous les 60 cm max
+- Découper rouleaux laine en deux si entraxe 60 cm
+- GAINES TECHNIQUES : passer TOUTES les gaines DERRIÈRE la laine de verre, puis les faire RESSORTIR à travers la laine en pratiquant un PETIT TROU que l'on vient étancher proprement
+- Joints placo (cycle strict) : 
+  1) Rebouchage MAP sur les têtes de vis ISOLÉES UNIQUEMENT (vis en plein milieu des plaques, hors axes des bandes)
+  2) PAS de MAP sur les vis dans l'axe des bandes de joints (elles seront chargées et noyées lors de l'application de la bande)
+  3) Gratter J+1
+  4) Coller bande + enduit (sécher complètement)
+  5) Deuxième passe charge (sécher)
+  6) Passe finition (sécher)
+  7) 4e passe si imperfection
+- Avant peinture : ponçage général + aspiration + dépoussiérage murs au balai serpillière humide
+
+CONNAISSANCES PLAFONDS/SOUS-SOLS :
+- Le plafond se fait TOUJOURS en premier (avant doublages/cloisons)
+- Toujours sur structure métallique
+- ATTENTION distinction critique :
+  * Plafond BOIS (poutres) : suspentes + fourrures
+  * Plafond BÉTON (dalle, ourdis/entrevous) : cavaliers pivot + tiges filetées + clips fourrures (JAMAIS de suspentes sur béton)
+- Pour béton/ourdis : utiliser fixations spéciales adaptées au matériau pour les tiges filetées
+- Passer TOUS les réseaux plafond (spots, dérivations, plomberie) AVANT fermeture
+
+CHRONOLOGIE GÉNÉRALE TRAVAUX :
+- Analyse + calepinage FIGÉ en premier (surtout cuisine/SdB)
+- Démolition + mise à nu (mobilier, sanitaires, papier peint, faïence, placo pourri)
+- Ordre obligatoire de reconstruction : 1) PLAFOND, 2) MURS (cloisons+doublages), 3) SOL (ragréage puis revêtement)
+- Blocs-portes posés en même temps que ferraille
+- Avoir TOUTES les fiches techniques équipements AVANT chantier (sorties au mm près)
+
+ANCIEN CARRELAGE IMPOSSIBLE À DÉPOSER (3 options) :
+- Ragréer/enduire directement dessus
+- Contre-cloison ossature métallique
+- Coller nouvelles plaques de plâtre
+
+ORDRE PEINTURE / SOLS - RÈGLE CAPITALE :
+- Si parquet (bois/PVC/stratifié) : Peinture COMPLÈTE d'abord (sous-couche + 2 couches finition), parquet en DERNIER
+- Si carrelage : Carrelage + joints + plinthes EN PREMIER, protection bâche/carton, PUIS peinture (interdit de peindre avant carrelage)
+- Ragréage TOUJOURS avant peinture (sinon projections sur murs finis)
+
+BÂTI ANCIEN / HUMIDITÉ :
+- Toujours anticiper imprévus (murs hors plomb, humidité, supports hétérogènes)
+- Fournisseur pro recommandé : Lanko / Parexlanko
+- HIVER : déshumidificateur chantier OBLIGATOIRE (centrale absorption 200-300€)
+- Chauffage constant en finitions
+- Risques hygrométrie élevée : coulures peinture, séchage bloqué, perte adhérence, moisissures
+
+FORMATION RECOMMANDÉE :
+- Chaîne YouTube "Taka Yaka" pour bases (placo, ratissage, enduits)
+
+CONNAISSANCES ÉLECTRICITÉ / CONSUEL (à utiliser si pertinent) :
+- Le Consuel n'est PAS obligatoire en rénovation si l'électricité est déjà existante et active dans la maison
+- Le Consuel est obligatoire UNIQUEMENT pour la création complète d'une nouvelle ligne (nouveau raccordement) ou une modification lourde de la distribution générale
+- Un particulier compétent en électricité peut réaliser ses travaux de rénovation seul, sans démarche Consuel
+- La norme NF C 15-100 doit être respectée mais ne nécessite pas de certification en rénovation simple
+- Pour des spots, prises ou interrupteurs en rénovation : pas d'obligation légale de faire intervenir un artisan certifié
+- Recommander un artisan UNIQUEMENT si le client n'a pas les compétences électriques (sécurité avant tout)
+
+FORMAT DE RÉPONSE (RESPECTE STRICTEMENT CE FORMAT) :
 
 # Diagnostic
 
 ## Problème identifié
-[Description précise du problème observé]
+[3-4 lignes max, points clés en liste si pertinent]
 
 ## Cause probable
-[Explication accessible et simple]
+[2-3 lignes]
 
 ## Niveau de gravité
 🟢 Faible / 🟡 Modéré / 🔴 Urgent
+
+---
 
 # Procédure de réparation
 
@@ -494,38 +558,56 @@ FORMAT DE RÉPONSE :
 ## Matériel nécessaire
 
 ### Outillage
-- [Liste précise avec prix moyens 2026]
+- [Liste courte, prix entre parenthèses]
 
-### Consommables (avec quantités calculées selon la surface)
-- [Liste précise avec quantités exactes basées sur la surface du chantier]
+### Consommables (quantités calculées)
+- [Liste avec quantités précises selon surface]
 
 ## Étapes détaillées
 
-### Étape 1 : [Titre court et clair]
-[Description précise, mentionner aspiration et vérification alignement si pertinent]
+### Étape 1 : [Titre court]
+[2-4 phrases courtes. Mentionner aspiration et alignement.]
 
-### Étape 2 : [Titre]
-[Description]
+### Étape 2 : [Titre court]
+[2-4 phrases courtes]
 
-[Continuer pour chaque étape, jusqu'à 6-7 étapes max...]
+[Continuer jusqu'à 6-8 étapes max]
 
 ## Sécurité importante
-- Équipements de protection (EPI) nécessaires
+- EPI nécessaires
 - Précautions spécifiques
 
-## Budget estimé
+## TABLEAU RÉCAPITULATIF DES COÛTS (OBLIGATOIRE)
 
-| Option | Coût matériel | Coût main d'œuvre | Total |
+### Faire soi-même
+
+| Poste | Quantité | Prix unitaire | Total |
 |---|---|---|---|
-| Faire soi-même | XX € | 0 € | XX € |
-| Faire faire | XX € | XX € | XX € |
+| [Matériel 1] | [Qté] | [Prix] | [Total] |
+| [Matériel 2] | [Qté] | [Prix] | [Total] |
+| **TOTAL MATÉRIEL** | | | **XX €** |
+
+### Faire faire par un artisan
+
+| Poste | Estimation |
+|---|---|
+| Matériel (idem) | XX € |
+| Main d'œuvre | XX € |
+| **TOTAL** | **XX €** |
+
+### Comparatif final
+
+| Option | Total | Économie |
+|---|---|---|
+| Faire soi-même | XX € | — |
+| Faire faire | XX € | -XX € |
 
 ## Quand faire appel à un artisan ?
-- [Critères concrets pour décider]
+- [3-4 critères clairs]
 
-> Conseil pratique : [Un conseil clé pour réussir, comme l'alignement ou l'aspiration]
+> Conseil pratique : [Un conseil clé pour réussir]
 
-Sois pédagogue, accessible, ultra-précis. Le lecteur est un particulier qui veut comprendre et réussir ses travaux.`,
+INSTRUCTION FINALE : Sois pédagogue, accessible, ULTRA-PRÉCIS sur les quantités et prix. Aére tes textes au maximum. Le lecteur est un particulier qui veut comprendre et réussir.`,
 
   agent: `Tu es un agent immobilier expert français. Crée une fiche commerciale professionnelle pour ce bien.
 
@@ -663,7 +745,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '') {
   content.push({ type: 'text', text: prompt });
   
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     messages: [{ role: 'user', content }]
   });
