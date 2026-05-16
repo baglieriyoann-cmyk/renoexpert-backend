@@ -243,42 +243,63 @@ function drawLevelBadge(doc, level) {
   doc.y += 36;
 }
 
-// Tableau classique pour données
+// Tableau classique pour données - VERSION AMÉLIORÉE PLUS VISUELLE
 function drawDataTable(doc, headers, rows) {
   const colCount = headers.length;
   const colWidth = LAYOUT.contentWidth / colCount;
-  const rowHeight = 30;
-  const totalHeight = (rows.length + 1) * rowHeight + 4;
+  const rowHeight = 34;
+  const headerHeight = 38;
+  
+  // Détecter si c'est un tableau "TOTAL" (dernière ligne souvent en gras)
+  const totalHeight = headerHeight + (rows.length * rowHeight) + 10;
   
   ensureSpace(doc, totalHeight + 10);
   
   const startY = doc.y;
   
-  // Header
-  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, rowHeight, 8).fill(COLORS.bgWhite);
-  doc.rect(LAYOUT.margin, startY + 4, LAYOUT.contentWidth, rowHeight - 4).fill(COLORS.mintGreen);
+  // Détection des lignes "TOTAL" pour mise en valeur
+  const isTotalRow = (row) => {
+    const firstCell = (row[0] || '').toLowerCase();
+    return firstCell.includes('total') || firstCell.includes('**');
+  };
+  
+  // Header avec dégradé vert menthe
+  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, headerHeight, 10)
+     .fill(COLORS.mintGreen);
   
   headers.forEach((header, i) => {
+    const cleanHeader = emojiToText(header).replace(/\*\*/g, '');
     doc.fillColor(COLORS.textDark).fontSize(10).font('Helvetica-Bold')
-       .text(emojiToText(header), LAYOUT.margin + 12 + (i * colWidth), startY + 12, { 
-         width: colWidth - 24,
-         lineBreak: false
+       .text(cleanHeader, LAYOUT.margin + 14 + (i * colWidth), startY + 14, { 
+         width: colWidth - 28,
+         lineBreak: true,
+         characterSpacing: 0.2
        });
   });
   
-  // Lignes
-  let currentY = startY + rowHeight;
+  // Lignes alternées
+  let currentY = startY + headerHeight;
   rows.forEach((row, rowIdx) => {
-    if (rowIdx % 2 === 0) {
+    const isTotal = isTotalRow(row);
+    
+    // Background
+    if (isTotal) {
+      // Ligne TOTAL en jaune crème (mise en valeur)
+      doc.roundedRect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight, 0)
+         .fill(COLORS.creamYellowBg);
+    } else if (rowIdx % 2 === 0) {
       doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill(COLORS.bgWhite);
     } else {
-      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill(COLORS.bgLight);
+      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill('#FBFBF8');
     }
     
     row.forEach((cell, i) => {
-      doc.fillColor(COLORS.textPrimary).fontSize(9).font('Helvetica')
-         .text(emojiToText(cell), LAYOUT.margin + 12 + (i * colWidth), currentY + 12, { 
-           width: colWidth - 24,
+      const cleanCell = emojiToText((cell || '').toString()).replace(/\*\*/g, '');
+      doc.fillColor(isTotal ? COLORS.textDark : COLORS.textPrimary)
+         .fontSize(isTotal ? 11 : 10)
+         .font(isTotal ? 'Helvetica-Bold' : 'Helvetica')
+         .text(cleanCell, LAYOUT.margin + 14 + (i * colWidth), currentY + 12, { 
+           width: colWidth - 28,
            lineBreak: false,
            ellipsis: true
          });
@@ -288,15 +309,22 @@ function drawDataTable(doc, headers, rows) {
   });
   
   // Bordure extérieure arrondie
-  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, currentY - startY, 8)
+  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, currentY - startY, 10)
      .lineWidth(1).stroke(COLORS.borderLight);
   
-  doc.y = currentY + 14;
+  // Petite ligne décorative finale sous le tableau
+  doc.y = currentY + 4;
+  const lineY = doc.y;
+  doc.moveTo(LAYOUT.margin + 20, lineY)
+     .lineTo(LAYOUT.margin + 60, lineY)
+     .strokeColor(COLORS.mintGreen).lineWidth(2).stroke();
+  
+  doc.y = currentY + 18;
 }
 
-// Étape numérotée style Canva amélioré
+// Étape numérotée style Canva amélioré - DANS UNE CARTE LÉGÈRE
 function drawNumberedStep(doc, number, title, content) {
-  ensureSpace(doc, 60);
+  ensureSpace(doc, 80);
   
   const startY = doc.y;
   
@@ -305,34 +333,47 @@ function drawNumberedStep(doc, number, title, content) {
   const colorIndex = (parseInt(number) - 1) % stepColors.length;
   const stepColor = stepColors[colorIndex];
   
+  // Calculer la hauteur de la carte
+  doc.fontSize(10).font('Helvetica');
+  const contentHeight = content ? doc.heightOfString(emojiToText(content), { 
+    width: LAYOUT.contentWidth - 56,
+    lineGap: 4
+  }) : 0;
+  const cardHeight = 32 + contentHeight + 16;
+  
+  ensureSpace(doc, cardHeight + 10);
+  
+  // Carte légère blanche autour de l'étape
+  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight, 10)
+     .fill(COLORS.bgWhite);
+  
+  // Barre de couleur à gauche (accent)
+  doc.roundedRect(LAYOUT.margin, startY, 4, cardHeight, 2).fill(stepColor);
+  
   // Ombre subtile derrière le cercle (effet pro)
-  doc.circle(LAYOUT.margin + 15, startY + 11, 15).fillOpacity(0.15).fill(COLORS.textDark).fillOpacity(1);
+  doc.circle(LAYOUT.margin + 31, startY + 19, 16).fillOpacity(0.1).fill(COLORS.textDark).fillOpacity(1);
   
-  // Cercle principal
-  doc.circle(LAYOUT.margin + 14, startY + 10, 14).fill(stepColor);
-  
-  // Numéro centré
-  doc.fillColor(COLORS.textDark).fontSize(12).font('Helvetica-Bold')
-     .text(String(number), LAYOUT.margin + 8, startY + 4, { width: 13, align: 'center' });
+  // Cercle principal avec le numéro
+  doc.circle(LAYOUT.margin + 30, startY + 18, 15).fill(stepColor);
+  doc.fillColor(COLORS.textDark).fontSize(13).font('Helvetica-Bold')
+     .text(String(number), LAYOUT.margin + 24, startY + 11, { width: 13, align: 'center' });
   
   // Titre de l'étape
-  doc.fillColor(COLORS.textDark).fontSize(11).font('Helvetica-Bold')
-     .text(emojiToText(title), LAYOUT.margin + 38, startY + 4, { 
-       width: LAYOUT.contentWidth - 38 
+  doc.fillColor(COLORS.textDark).fontSize(12).font('Helvetica-Bold')
+     .text(emojiToText(title), LAYOUT.margin + 56, startY + 12, { 
+       width: LAYOUT.contentWidth - 64
      });
   
-  doc.y = startY + 28;
-  
-  // Contenu
+  // Contenu de l'étape avec plus d'espace
   if (content) {
     doc.fillColor(COLORS.textPrimary).fontSize(10).font('Helvetica')
-       .text(emojiToText(content), LAYOUT.margin + 38, doc.y, { 
-         width: LAYOUT.contentWidth - 38,
-         lineGap: 3
+       .text(emojiToText(content), LAYOUT.margin + 56, startY + 36, { 
+         width: LAYOUT.contentWidth - 64,
+         lineGap: 4
        });
   }
   
-  doc.moveDown(0.5);
+  doc.y = startY + cardHeight + 12;
 }
 
 // ============================================================
@@ -442,20 +483,23 @@ function renderContent(doc, text) {
         doc.moveDown(0.3);
       }
     }
-    // Liste à puces
+    // Liste à puces - PLUS AÉRÉE
     else if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
       const itemText = emojiToText(trimmed.replace(/^[\-•\*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1'));
-      ensureSpace(doc, 18);
+      ensureSpace(doc, 22);
       
-      const bulletY = doc.y + 6;
-      doc.circle(LAYOUT.margin + 6, bulletY, 2).fill(COLORS.textDark);
+      const bulletY = doc.y + 7;
+      // Puce colorée alternante
+      const bulletColors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink];
+      const bulletColor = bulletColors[Math.floor(Math.random() * bulletColors.length)];
+      doc.circle(LAYOUT.margin + 7, bulletY, 3).fill(bulletColor);
       
       doc.fillColor(COLORS.textPrimary).fontSize(10).font('Helvetica')
-         .text(itemText, LAYOUT.margin + 16, doc.y, { 
-           width: LAYOUT.contentWidth - 20,
-           lineGap: 1
+         .text(itemText, LAYOUT.margin + 20, doc.y, { 
+           width: LAYOUT.contentWidth - 24,
+           lineGap: 3
          });
-      doc.moveDown(0.15);
+      doc.moveDown(0.4);
     }
     // Citation
     else if (trimmed.startsWith('> ')) {
@@ -469,17 +513,18 @@ function renderContent(doc, text) {
         textColor: COLORS.creamYellowDark
       });
     }
-    // Texte normal
+    // Texte normal - PLUS AÉRÉ
     else {
       const cleanLine = emojiToText(trimmed.replace(/\*\*(.*?)\*\*/g, '$1'));
-      ensureSpace(doc, 16);
+      ensureSpace(doc, 18);
       
       doc.fillColor(COLORS.textPrimary).fontSize(10).font('Helvetica')
          .text(cleanLine, LAYOUT.margin, doc.y, { 
            width: LAYOUT.contentWidth,
-           lineGap: 2
+           lineGap: 4,
+           paragraphGap: 6
          });
-      doc.moveDown(0.2);
+      doc.moveDown(0.4);
     }
   }
   
