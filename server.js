@@ -12,10 +12,10 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
-const PDFDocument = require('pdfkit');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const pdfGen = require('./pdfGenerator');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -161,7 +161,7 @@ async function sendEmail(to, subject, htmlContent) {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        sender: { name: 'RénoExpert', email: 'baglieriyoann@gmail.com' },
+        sender: { name: 'RénoExpert', email: 'noreply@renoexpert.fr' },
         to: [{ email: to }],
         subject,
         htmlContent
@@ -453,45 +453,79 @@ Donne une analyse structurée et précise :
 
 Sois précis, factuel, professionnel.`,
 
-  reparation: `Tu es un expert bâtiment français. Diagnostique le problème montré sur les photos et donne une procédure de réparation claire.
+  reparation: `Tu es un expert bâtiment français senior avec 20 ans d'expérience terrain. Diagnostique le problème montré sur les photos et donne une procédure de réparation claire pour un particulier.
 
-# 🔧 Diagnostic
+RÈGLES STRICTES :
+- N'utilise JAMAIS le mot "DIY". Utilise : "à faire soi-même", "faire faire par un artisan", "bricoleur confirmé", "bricoleur débutant"
+- Sois TRÈS précis sur les quantités, dimensions, dosages
+- Insiste sur l'aspiration à CHAQUE étape (point essentiel pour la qualité)
+- Mentionne la vérification d'alignement (règle ou laser) au fur et à mesure
+- Donne des prix réalistes 2026
+
+CONNAISSANCES TECHNIQUES CARRELAGE (à utiliser si pertinent) :
+- Ragréage : 1.7 kg/m²/mm d'épaisseur
+- Colle carrelage C2 : 1 sac 25kg pour 5 m² (simple encollage) ou 4 m² (double encollage pour grands formats > 30x30 cm)
+- Joints carrelage : 5 kg pour 10 m²
+- ORDRE DE POSE : 1) Pose du carrelage AVEC les plinthes carrelage en même temps (collées à la colle carrelage), 2) Jointoiement de TOUS les joints simultanément (sol + plinthes en même temps)
+- Outillage essentiel : scie trépan carrelage sur disqueuse (découpes rapides et précises), couteau à enduire spécial ou petite disqueuse 12V pour gratter le surplus de colle avant les joints
+- Kit joints à recommander (environ 30€, finition impeccable) : taloche en caoutchouc pour bien écraser le joint, éponge spéciale joints, seau avec rouleaux essoreurs (enlève efficacement le surplus d'eau de l'éponge)
+- ASPIRATION OBLIGATOIRE à chaque étape (point essentiel pour la qualité finale)
+- Vérification alignement à la règle ou au laser au fur et à mesure de la pose
+- TOUJOURS prévoir un surplus matériel (mieux de ramener que manquer sur chantier)
+
+FORMAT DE RÉPONSE :
+
+# Diagnostic
 
 ## Problème identifié
-[Description précise]
+[Description précise du problème observé]
 
 ## Cause probable
-[Pourquoi ce problème]
+[Explication accessible et simple]
 
 ## Niveau de gravité
 🟢 Faible / 🟡 Modéré / 🔴 Urgent
 
-# 🛠️ Procédure de réparation
+# Procédure de réparation
 
-## Difficulté
-[DIY débutant / DIY confirmé / Pro recommandé]
+## Niveau requis
+[Bricoleur débutant / Bricoleur confirmé / Faire appel à un artisan]
 
 ## Matériel nécessaire
-- [Liste précise avec quantités]
 
-## Étapes
-### Étape 1 : [Titre]
-[Description détaillée]
+### Outillage
+- [Liste précise avec prix moyens 2026]
+
+### Consommables (avec quantités calculées selon la surface)
+- [Liste précise avec quantités exactes basées sur la surface du chantier]
+
+## Étapes détaillées
+
+### Étape 1 : [Titre court et clair]
+[Description précise, mentionner aspiration et vérification alignement si pertinent]
 
 ### Étape 2 : [Titre]
 [Description]
 
-[etc.]
+[Continuer pour chaque étape, jusqu'à 6-7 étapes max...]
 
-## Sécurité ⚠️
-[Précautions à prendre]
+## Sécurité importante
+- Équipements de protection (EPI) nécessaires
+- Précautions spécifiques
 
 ## Budget estimé
-- DIY : XX €
-- Pro : XX € à XX €
 
-## Quand appeler un pro ?
-[Critères de décision]`,
+| Option | Coût matériel | Coût main d'œuvre | Total |
+|---|---|---|---|
+| Faire soi-même | XX € | 0 € | XX € |
+| Faire faire | XX € | XX € | XX € |
+
+## Quand faire appel à un artisan ?
+- [Critères concrets pour décider]
+
+> Conseil pratique : [Un conseil clé pour réussir, comme l'alignement ou l'aspiration]
+
+Sois pédagogue, accessible, ultra-précis. Le lecteur est un particulier qui veut comprendre et réussir ses travaux.`,
 
   agent: `Tu es un agent immobilier expert français. Crée une fiche commerciale professionnelle pour ce bien.
 
@@ -629,7 +663,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '') {
   content.push({ type: 'text', text: prompt });
   
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     messages: [{ role: 'user', content }]
   });
@@ -895,129 +929,53 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 });
 
 // ============================================================
-// PDF ROUTES (identique v3.2)
+// PDF ROUTES (avec design pro v3.4)
 // ============================================================
-
-function setupPDF(res, filename) {
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  doc.pipe(res);
-  return doc;
-}
-
-function renderMarkdownToPDF(doc, text) {
-  const lines = text.split('\n');
-  for (let line of lines) {
-    if (doc.y > doc.page.height - 100) doc.addPage();
-    line = line.trim();
-    if (!line) { doc.moveDown(0.3); continue; }
-    
-    if (line.startsWith('# ')) {
-      doc.moveDown(0.3);
-      doc.fillColor('#0052cc').fontSize(14).font('Helvetica-Bold').text(line.replace(/^#\s+/, ''), { width: doc.page.width - 100 });
-      doc.moveDown(0.2);
-    } else if (line.startsWith('## ')) {
-      doc.moveDown(0.3);
-      doc.fillColor('#0066ff').fontSize(12).font('Helvetica-Bold').text(line.replace(/^##\s+/, ''), { width: doc.page.width - 100 });
-      doc.moveDown(0.2);
-    } else if (line.startsWith('### ')) {
-      doc.fillColor('#4d94ff').fontSize(11).font('Helvetica-Bold').text(line.replace(/^###\s+/, ''), { width: doc.page.width - 100 });
-      doc.moveDown(0.2);
-    } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ')) {
-      const t = line.replace(/^[\-•\*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1');
-      doc.fillColor('#0a0e27').fontSize(10).font('Helvetica').text('• ' + t, { width: doc.page.width - 100, indent: 10, lineGap: 2 });
-    } else {
-      const cleanLine = line.replace(/\*\*(.*?)\*\*/g, '$1');
-      doc.fillColor('#0a0e27').fontSize(10).font('Helvetica').text(cleanLine, { width: doc.page.width - 100, lineGap: 2 });
-    }
-  }
-}
-
-function pdfHeader(doc, subtitle) {
-  doc.rect(0, 0, doc.page.width, 80).fill('#0066ff');
-  doc.fillColor('white').fontSize(24).font('Helvetica-Bold').text('RénoExpert', 50, 25);
-  doc.fontSize(11).font('Helvetica').text(subtitle, 50, 55);
-  doc.fontSize(10).text(new Date().toLocaleDateString('fr-FR'), 50, 25, { align: 'right', width: doc.page.width - 100 });
-  doc.fillColor('#0a0e27').fontSize(11);
-  doc.y = 110;
-}
 
 app.post('/api/pdf/visite', async (req, res) => {
   try {
-    const { analysis, location, surface, date } = req.body;
+    const { analysis, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    const doc = setupPDF(res, 'visite-renoexpert.pdf');
-    pdfHeader(doc, 'Diagnostic immobilier pour visite achat');
-    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('📍 Informations du bien');
-    doc.moveDown(0.3);
-    doc.fillColor('#0a0e27').fontSize(11).font('Helvetica')
-       .text(`Adresse : ${location || 'N/A'}`).text(`Surface : ${surface || 'N/A'} m²`).text(`Date : ${date || new Date().toLocaleDateString('fr-FR')}`);
-    doc.moveDown();
-    renderMarkdownToPDF(doc, analysis);
-    doc.end();
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    pdfGen.generateVisitePDF({ analysis, location, surface }, res);
+  } catch (error) {
+    console.error('Erreur PDF visite:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/pdf/reparation', async (req, res) => {
   try {
-    const { analysis, description, date } = req.body;
+    const { analysis, description } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    const doc = setupPDF(res, 'guide-reparation.pdf');
-    pdfHeader(doc, 'Guide pratique de réparation');
-    const yStart = doc.y;
-    doc.rect(50, yStart, doc.page.width - 100, 60).fillAndStroke('#fff4e6', '#ffaa00');
-    doc.fillColor('#c25a00').fontSize(11).font('Helvetica-Bold').text('⚠️ À LIRE AVANT DE COMMENCER', 60, yStart + 10);
-    doc.fillColor('#5e6987').fontSize(9).font('Helvetica')
-       .text('• Coupez l\'électricité et l\'eau si nécessaire\n• Portez les EPI adaptés (gants, lunettes, masque)\n• En cas de doute, faites appel à un professionnel',
-         60, yStart + 27, { width: doc.page.width - 120, lineGap: 2 });
-    doc.y = yStart + 80;
-    doc.moveDown();
-    if (description) {
-      doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('📋 Problème signalé');
-      doc.moveDown(0.5);
-      doc.fillColor('#0a0e27').fontSize(10).font('Helvetica').text(description, { width: doc.page.width - 100, lineGap: 3 });
-      doc.moveDown();
-    }
-    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('🔧 Diagnostic & réparation');
-    doc.moveDown(0.5);
-    renderMarkdownToPDF(doc, analysis);
-    doc.end();
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    pdfGen.generateReparationPDF({ analysis, description }, res);
+  } catch (error) {
+    console.error('Erreur PDF reparation:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/pdf/agent', async (req, res) => {
   try {
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    const doc = setupPDF(res, 'fiche-agent.pdf');
-    pdfHeader(doc, `${agence_nom || 'Agence'} - Fiche pro`);
-    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('🏢 Informations agence');
-    doc.moveDown(0.3);
-    doc.fillColor('#0a0e27').fontSize(11).font('Helvetica')
-       .text(`Agence : ${agence_nom || 'N/A'}`).text(`Agent : ${agent_nom || 'N/A'}`).text(`Bien : ${location || 'N/A'}`).text(`Surface : ${surface || 'N/A'} m²`);
-    doc.moveDown();
-    renderMarkdownToPDF(doc, analysis);
-    doc.end();
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    pdfGen.generateAgentPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
+  } catch (error) {
+    console.error('Erreur PDF agent:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/pdf/marchand', async (req, res) => {
   try {
     const { analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    const doc = setupPDF(res, 'dossier-banque.pdf');
-    pdfHeader(doc, 'Dossier pour banque - Article 1115 CGI');
-    doc.fillColor('#0066ff').fontSize(13).font('Helvetica-Bold').text('💼 Identification opération');
-    doc.moveDown(0.3);
-    doc.fillColor('#0a0e27').fontSize(11).font('Helvetica')
-       .text(`Société MB : ${mb_societe || 'N/A'}`).text(`Adresse : ${location || 'N/A'}`).text(`Surface : ${surface || 'N/A'} m²`)
-       .text(`Prix demandé : ${prix_demande ? Number(prix_demande).toLocaleString('fr-FR') + ' €' : 'N/A'}`)
-       .text(`Stratégie : ${strategie || 'N/A'}`).text(`Nombre de lots : ${nb_lots || 'N/A'}`);
-    doc.moveDown();
-    renderMarkdownToPDF(doc, analysis);
-    doc.end();
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    pdfGen.generateMarchandPDF({ 
+      analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie 
+    }, res);
+  } catch (error) {
+    console.error('Erreur PDF marchand:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ============================================================
