@@ -1,49 +1,53 @@
 // ============================================================
-// pdfGenerator.js v3.5 - Style Canva pastel élégant
+// pdfGenerator.js v4.0 - Style luxe : Blanc cassé / Marine / Or rosé
 // ============================================================
-// Inspiration : compte-rendus Canva avec couleurs pastel douces
-// Palette : vert menthe, jaune crème, rose corail, rose poudré
+// Inspiration : catalogues immobiliers haut de gamme (Knight Frank,
+// Sotheby's). Palette sobre, typographie classique, accents dorés.
 // ============================================================
 
 const PDFDocument = require('pdfkit');
 
 // ============================================================
-// PALETTE COULEURS (style Canva pastel)
+// PALETTE LUXE
 // ============================================================
 const COLORS = {
-  // Couleurs principales pastel (style Canva)
-  mintGreen: '#A8E5C5',      // Vert menthe pastel
-  mintGreenBg: '#E8F7EF',
-  mintGreenDark: '#2D8959',
-  
-  creamYellow: '#FFE9A8',    // Jaune crème
-  creamYellowBg: '#FFF8DD',
-  creamYellowDark: '#B8860B',
-  
-  coralRed: '#FF9595',       // Rouge corail
-  coralRedBg: '#FFEAEA',
-  coralRedDark: '#C53030',
-  
-  powderPink: '#FFC2D1',     // Rose poudré
-  powderPinkBg: '#FFE8EE',
-  powderPinkDark: '#B83257',
-  
-  skyBlue: '#A8D5FF',        // Bleu ciel
-  skyBlueBg: '#E8F2FF',
-  skyBlueDark: '#0066CC',
-  
-  // Couleurs neutres
-  bgCream: '#F5F1ED',        // Fond beige crème (comme la photo)
+  // Fonds
+  bg: '#FAFAF7',          // Blanc cassé principal
+  bgPaper: '#FFFFFF',     // Papier pur (cartes)
+  bgSoft: '#F2EEE4',      // Crème légère (cartes accent)
+  bgMuted: '#E8E3D6',     // Beige plus prononcé (totaux)
+
+  // Marine
+  navy: '#0F1F3D',
+  navyDeep: '#0A1530',
+  navyLight: '#1F3358',
+
+  // Or rosé
+  gold: '#C9A961',
+  goldLight: '#E0CB8E',
+  goldDark: '#9A7E3C',
+
+  // Texte
+  textDark: '#0A0A0A',
+  textPrimary: '#1A1A1A',
+  textSecondary: '#4A4A4A',
+  textMuted: '#8A8A8A',
+  textOnNavy: '#FAFAF7',
+
+  // Filets / séparateurs
+  borderLight: '#E3DFD7',
+  borderMid: '#C9C5BB',
+  divider: '#C9A961',
+
+  // Compat : anciens noms encore référencés ailleurs dans le fichier
+  bgCream: '#FAFAF7',
   bgWhite: '#FFFFFF',
-  bgLight: '#FAFAFA',
-  
-  textDark: '#1a1a1a',       // Texte titre (noir profond)
-  textPrimary: '#2c2c2c',
-  textSecondary: '#5e5e5e',
-  textMuted: '#9a9a9a',
-  
-  borderLight: '#E5E2DD',
-  divider: '#D5D2CD'
+  bgLight: '#F4F1EA',
+  mintGreen: '#0F1F3D', mintGreenBg: '#F2EEE4', mintGreenDark: '#0F1F3D',
+  creamYellow: '#C9A961', creamYellowBg: '#F4ECD8', creamYellowDark: '#9A7E3C',
+  coralRed: '#0F1F3D', coralRedBg: '#EDE7DA', coralRedDark: '#0F1F3D',
+  powderPink: '#C9A961', powderPinkBg: '#F4ECD8', powderPinkDark: '#9A7E3C',
+  skyBlue: '#1F3358', skyBlueBg: '#ECEFF5', skyBlueDark: '#0F1F3D'
 };
 
 const LAYOUT = {
@@ -69,36 +73,55 @@ function simplifyTerms(text) {
 // ============================================================
 // GESTION EMOJIS (PDFKit ne les supporte pas en standard)
 // ============================================================
+// Codepoints Unicode > 0xFF présents dans WinAnsi (CP1252). Tout ce qui sort
+// de cette whitelist est purgé : Helvetica + WinAnsi ne sait pas les rendre.
+const WIN_ANSI_EXTRAS = new Set([
+  0x20AC, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6,
+  0x2030, 0x0160, 0x2039, 0x0152, 0x017D, 0x2018, 0x2019, 0x201C,
+  0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A,
+  0x0153, 0x017E, 0x0178
+]);
 function emojiToText(text) {
   if (!text) return '';
   const map = {
-    '🏠': '', '🔧': '', '💼': '', '🏢': '', '📍': '', '📐': '',
-    '📅': '', '✅': '✓', '❌': '✗', '⚠️': '!', '⚠': '!',
-    '💡': '', '🛡️': '', '💰': '',
-    // Niveaux de gravité : utiliser du texte lisible (les caractères Unicode ronds ne sont pas dans WinAnsi -> rendu cassé "%Ï")
-    '🟢': '[Faible]', '🟡': '[Modéré]', '🔴': '[Urgent]',
-    '📋': '', '📝': '', '🎯': '', '👍': '', '👎': '', '📊': '',
-    '🤖': '', '⭐': '*', '✨': '', '🎁': '', '🚀': '', '📞': '',
-    '📧': '', '👤': '', '🔨': '', '🛠️': '', '🏘️': '', '⚖️': '',
-    '€': 'EUR',
-    // Caractères Unicode rares qui ne passent pas en WinAnsi (Helvetica par défaut)
-    '●': '*', '■': '*', '▪': '*', '◆': '*', '★': '*',
-    '\u201C': '"', '\u201D': '"', '\u2018': "'", '\u2019': "'", '…': '...',
-    '→': '->', '←': '<-', '↑': '^', '↓': 'v',
-    '≥': '>=', '≤': '<=', '≠': '!=', '≈': '~',
-    '×': 'x', '÷': '/', '°': 'deg'
+    // Emojis fréquents : supprimés ou mappés ASCII
+    '🏠':'','🔧':'','💼':'','🏢':'','📍':'','📐':'','📅':'',
+    '✅':'✓','❌':'✗','⚠️':'!','⚠':'!','💡':'','🛡️':'','💰':'',
+    '🟢':'[Niveau faible]','🟡':'[Niveau modéré]','🔴':'[Niveau urgent]',
+    '📋':'','📝':'','🎯':'','👍':'','👎':'','📊':'','🤖':'',
+    '⭐':'','✨':'','🎁':'','🚀':'','📞':'','📧':'','👤':'',
+    '🔨':'','🛠️':'','🏘️':'','⚖️':'',
+    // Pictos parquet/sanitaires/jardin qui se rendaient "Ø>Þµ" / "þ"
+    '🪵':'','🪟':'','🛁':'','🚿':'','🏊':'','🚗':'','🌳':'',
+    '🌿':'','🌞':'','🏡':'','🏖':'','🔆':'','🌟':'',
+    // Séparateurs Unicode (origine des "%P%P%P" répétés)
+    '━':'','─':'','═':'','╌':'','╍':'','╎':'','╏':'',
+    '┃':'','┄':'','┅':'','┆':'','┇':'',
+    '▬':'','▔':'','▁':'','▂':'','▃':'','▄':'','▅':'','▆':'','▇':'','█':'',
+    // Formes géométriques hors WinAnsi
+    '●':'','■':'','▪':'','◆':'','★':'','☆':'',
+    '○':'','◯':'','◉':'','◎':'',
+    // Guillemets typographiques anglais : ASCII (FR utilise « » qui sont WinAnsi)
+    '“':'"','”':'"','‘':"'",'’':"'",
+    // Flèches → angles WinAnsi (rendu sobre)
+    '→':'›','←':'‹','↑':'^','↓':'v',
+    // Math hors WinAnsi
+    '≥':'>=','≤':'<=','≠':'!=','≈':'~','×':'x','÷':'/'
+    // NB : € œ Œ Ÿ « » … – — ° sont dans WinAnsi → laissés tels quels
   };
   let result = text;
   for (const [e, r] of Object.entries(map)) {
     result = result.split(e).join(r);
   }
-  // Nettoyer le reste des emojis Unicode
-  return result
-    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
-    .replace(/[\u{2600}-\u{27BF}]/gu, '')
-    .replace(/[\u{1F000}-\u{1F2FF}]/gu, '')
-    .replace(/[\u{1F100}-\u{1F1FF}]/gu, '')
-    .trim();
+  // Filet de sécurité : Helvetica + WinAnsi ne rend que Latin-1 (0x00-0xFF)
+  // + un sous-ensemble Unicode (WIN_ANSI_EXTRAS). Le reste produit "%P%P%P",
+  // "Ø>Þµ", "þ"… → on purge silencieusement, par codepoint (surrogate-safe).
+  let out = '';
+  for (const ch of result) {
+    const cp = ch.codePointAt(0);
+    if (cp <= 0xFF || WIN_ANSI_EXTRAS.has(cp)) out += ch;
+  }
+  return out.trim();
 }
 
 // ============================================================
@@ -106,7 +129,17 @@ function emojiToText(text) {
 // ============================================================
 
 function fillBackground(doc) {
-  doc.rect(0, 0, LAYOUT.pageWidth, LAYOUT.pageHeight).fill(COLORS.bgCream);
+  doc.rect(0, 0, LAYOUT.pageWidth, LAYOUT.pageHeight).fill(COLORS.bg);
+}
+
+// Filet horizontal doré (séparateur sobre)
+function drawGoldRule(doc, options) {
+  const opts = options || {};
+  const y = opts.y != null ? opts.y : doc.y;
+  const width = opts.width || 60;
+  const x = opts.x != null ? opts.x : (LAYOUT.pageWidth - width) / 2;
+  doc.moveTo(x, y).lineTo(x + width, y)
+     .strokeColor(COLORS.gold).lineWidth(0.8).stroke();
 }
 
 function ensureSpace(doc, neededHeight) {
@@ -120,113 +153,108 @@ function ensureSpace(doc, neededHeight) {
   return false;
 }
 
-// Carte info avec couleur de fond pastel + petite icône cercle
+// Carte sobre haut de gamme : fond crème, filet or à gauche, titre marine
 function drawColoredCard(doc, options) {
-  const { title, content, bgColor, accentColor, textColor, icon } = options;
-  
-  // Calculer la hauteur nécessaire AVANT de réserver l'espace
+  const { title, content } = options;
+  const padX = 22;
+  const padY = 16;
+
   doc.fontSize(10).font('Helvetica');
-  const contentHeight = content ? doc.heightOfString(emojiToText(content), { 
-    width: LAYOUT.contentWidth - 60 
+  const contentHeight = content ? doc.heightOfString(emojiToText(content), {
+    width: LAYOUT.contentWidth - (padX * 2)
   }) : 0;
-  const titleHeight = title ? 22 : 0;
-  const cardHeight = titleHeight + contentHeight + 30;
-  
-  // FIX : réserver l'espace UNE fois avec la hauteur exacte, PUIS lire startY
+  const titleHeight = title ? 20 : 0;
+  const cardHeight = titleHeight + contentHeight + (padY * 2);
+
   ensureSpace(doc, cardHeight + 10);
   const startY = doc.y;
-  
-  // Carte avec coins arrondis
-  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight, 12)
-     .fill(bgColor);
-  
-  // Petit cercle accent à gauche (décoration)
-  const dotColor = textColor || COLORS.textDark;
-  doc.circle(LAYOUT.margin + 22, startY + 22, 5).fillOpacity(0.4).fill(dotColor).fillOpacity(1);
-  doc.circle(LAYOUT.margin + 22, startY + 22, 3).fill(dotColor);
-  
-  let textY = startY + 16;
-  
-  // Titre
+
+  // Fond crème léger, coins très peu arrondis (sobriété)
+  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight, 3)
+     .fill(COLORS.bgSoft);
+
+  // Filet or vertical à gauche (signature luxe)
+  doc.rect(LAYOUT.margin, startY, 3, cardHeight).fill(COLORS.gold);
+
+  let textY = startY + padY;
+
   if (title) {
-    doc.fillColor(textColor || COLORS.textDark)
-       .fontSize(11).font('Helvetica-Bold')
-       .text(emojiToText(title).toUpperCase(), LAYOUT.margin + 38, textY, { 
-         width: LAYOUT.contentWidth - 56,
-         characterSpacing: 0.5
+    doc.fillColor(COLORS.navy)
+       .fontSize(10).font('Helvetica-Bold')
+       .text(emojiToText(title).toUpperCase(), LAYOUT.margin + padX, textY, {
+         width: LAYOUT.contentWidth - (padX * 2),
+         characterSpacing: 1.2
        });
-    textY += 18;
+    textY += titleHeight;
   }
-  
-  // Contenu
+
   if (content) {
     doc.fillColor(COLORS.textPrimary)
        .fontSize(10).font('Helvetica')
-       .text(emojiToText(content), LAYOUT.margin + 38, textY, { 
-         width: LAYOUT.contentWidth - 56,
-         lineGap: 2
+       .text(emojiToText(content), LAYOUT.margin + padX, textY, {
+         width: LAYOUT.contentWidth - (padX * 2),
+         lineGap: 3
        });
   }
-  
+
   doc.y = startY + cardHeight + 14;
 }
 
-// Tableau d'en-tête style Canva (4 colonnes colorées)
+// Tableau d'en-tête luxe : 4 colonnes encadrées, libellés or, valeurs marine
 function drawCanvaHeaderTable(doc, columns) {
   ensureSpace(doc, 140);
-  
+
   const startY = doc.y;
   const colCount = columns.length;
-  const gap = 4;
-  const colWidth = (LAYOUT.contentWidth - (gap * (colCount - 1))) / colCount;
-  const titleHeight = 38;
-  const contentHeight = 90;
-  
+  const colWidth = LAYOUT.contentWidth / colCount;
+  const titleHeight = 30;
+  const contentHeight = 80;
+  const totalHeight = titleHeight + contentHeight;
+
+  // Cadre extérieur global, filets marine très fins
+  doc.rect(LAYOUT.margin, startY, LAYOUT.contentWidth, totalHeight)
+     .lineWidth(0.4).strokeColor(COLORS.navy).stroke();
+
   columns.forEach((col, i) => {
-    const x = LAYOUT.margin + (i * (colWidth + gap));
-    
-    // Header coloré
-    doc.roundedRect(x, startY, colWidth, titleHeight, 8).fill(col.headerColor);
-    
-    doc.fillColor(COLORS.textDark)
-       .fontSize(10).font('Helvetica-Bold')
-       .text(emojiToText(col.title), x, startY + 13, { 
+    const x = LAYOUT.margin + (i * colWidth);
+
+    // Séparateurs verticaux internes
+    if (i > 0) {
+      doc.moveTo(x, startY).lineTo(x, startY + totalHeight)
+         .lineWidth(0.3).strokeColor(COLORS.borderMid).stroke();
+    }
+
+    // Bande titre : fond marine, texte ivoire en lettres espacées
+    doc.rect(x, startY, colWidth, titleHeight).fill(COLORS.navy);
+    doc.fillColor(COLORS.textOnNavy)
+       .fontSize(8).font('Helvetica-Bold')
+       .text(emojiToText(col.title).toUpperCase(), x, startY + 11, {
          width: colWidth,
          align: 'center',
+         characterSpacing: 1.5,
          lineBreak: false
        });
-    
-    // Contenu blanc dessous
-    doc.roundedRect(x, startY + titleHeight + 4, colWidth, contentHeight, 8)
-       .fill(col.contentBg || COLORS.bgWhite);
-    
-    // Texte du contenu
+
+    // Filet doré sous le titre (signature)
+    doc.moveTo(x + colWidth * 0.35, startY + titleHeight - 0.5)
+       .lineTo(x + colWidth * 0.65, startY + titleHeight - 0.5)
+       .lineWidth(0.6).strokeColor(COLORS.gold).stroke();
+
+    // Contenu : fond papier
+    doc.rect(x, startY + titleHeight, colWidth, contentHeight).fill(COLORS.bgPaper);
+
+    // Texte valeur centré
+    const text = Array.isArray(col.content) ? col.content.join('\n') : (col.content || '');
     doc.fillColor(COLORS.textPrimary)
-       .fontSize(9).font('Helvetica');
-    
-    if (Array.isArray(col.content)) {
-      // Liste à puces
-      let contentY = startY + titleHeight + 14;
-      col.content.forEach(item => {
-        doc.circle(x + 12, contentY + 4, 1.5).fill(COLORS.textPrimary);
-        doc.fillColor(COLORS.textPrimary)
-           .text(emojiToText(item), x + 18, contentY, { 
-             width: colWidth - 22,
-             lineGap: 1
-           });
-        contentY = doc.y + 4;
-      });
-    } else {
-      // Texte simple centré
-      doc.text(emojiToText(col.content || ''), x + 8, startY + titleHeight + 20, { 
-        width: colWidth - 16,
-        align: 'center',
-        lineGap: 2
-      });
-    }
+       .fontSize(9).font('Helvetica')
+       .text(emojiToText(text), x + 6, startY + titleHeight + 18, {
+         width: colWidth - 12,
+         align: 'center',
+         lineGap: 2
+       });
   });
-  
-  doc.y = startY + titleHeight + 4 + contentHeight + 18;
+
+  doc.y = startY + totalHeight + 22;
 }
 
 // Badge de niveau
@@ -277,20 +305,25 @@ function drawDataTable(doc, headers, rows) {
     return Math.max(28, maxHeight + (padY * 2));
   };
   
-  // Dessine l'en-tête du tableau (réutilisable lors d'un saut de page)
+  // En-tête : bandeau marine, texte ivoire en lettres espacées
   const drawHeader = (startY) => {
-    doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, headerHeight, 10)
-       .fill(COLORS.mintGreen);
-    
+    doc.rect(LAYOUT.margin, startY, LAYOUT.contentWidth, headerHeight)
+       .fill(COLORS.navy);
+
     headers.forEach((header, i) => {
       const cleanHeader = emojiToText(header).replace(/\*\*/g, '');
-      doc.fillColor(COLORS.textDark).fontSize(10).font('Helvetica-Bold')
-         .text(cleanHeader, LAYOUT.margin + padX + (i * colWidth), startY + 14, { 
+      doc.fillColor(COLORS.textOnNavy).fontSize(9).font('Helvetica-Bold')
+         .text(cleanHeader.toUpperCase(), LAYOUT.margin + padX + (i * colWidth), startY + 14, {
            width: colWidth - (padX * 2),
            lineBreak: true,
-           characterSpacing: 0.2
+           characterSpacing: 1.2
          });
     });
+
+    // Filet doré sous l'en-tête (signature)
+    doc.moveTo(LAYOUT.margin, startY + headerHeight)
+       .lineTo(LAYOUT.margin + LAYOUT.contentWidth, startY + headerHeight)
+       .lineWidth(0.8).strokeColor(COLORS.gold).stroke();
     return startY + headerHeight;
   };
   
@@ -305,113 +338,104 @@ function drawDataTable(doc, headers, rows) {
     const isTotal = isTotalRow(row);
     const rowHeight = measureRowHeight(row);
     
-    // FIX PAGINATION : si la ligne ne tient pas, on ferme le tableau, on saute de page, on redessine le header
+    // Pagination : ferme la bordure courante, saute de page, redessine l'en-tête
     if (currentY + rowHeight > LAYOUT.pageHeight - bottomMargin) {
-      // Bordure extérieure de la portion de tableau sur cette page
-      doc.roundedRect(LAYOUT.margin, tableTopY, LAYOUT.contentWidth, currentY - tableTopY, 10)
-         .lineWidth(1).stroke(COLORS.borderLight);
-      
+      doc.rect(LAYOUT.margin, tableTopY, LAYOUT.contentWidth, currentY - tableTopY)
+         .lineWidth(0.4).strokeColor(COLORS.navy).stroke();
+
       doc.addPage();
       fillBackground(doc);
       doc.y = LAYOUT.margin;
       tableTopY = doc.y;
       currentY = drawHeader(tableTopY);
     }
-    
-    // Background de la ligne
+
+    // Fond de ligne : alternance papier / crème légère, total = beige + filet or
     if (isTotal) {
-      doc.roundedRect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight, 0)
-         .fill(COLORS.creamYellowBg);
+      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill(COLORS.bgMuted);
+      doc.moveTo(LAYOUT.margin, currentY).lineTo(LAYOUT.margin + LAYOUT.contentWidth, currentY)
+         .lineWidth(0.6).strokeColor(COLORS.gold).stroke();
     } else if (rowIdx % 2 === 0) {
-      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill(COLORS.bgWhite);
+      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill(COLORS.bgPaper);
     } else {
-      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill('#FBFBF8');
+      doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill(COLORS.bg);
     }
-    
-    // Contenu des cellules avec WRAP (lineBreak: true, plus de troncature ellipsis)
+
+    // Cellules
     row.forEach((cell, i) => {
       const cleanCell = emojiToText((cell || '').toString()).replace(/\*\*/g, '');
-      doc.fillColor(isTotal ? COLORS.textDark : COLORS.textPrimary)
-         .fontSize(isTotal ? 11 : 10)
+      doc.fillColor(isTotal ? COLORS.navy : COLORS.textPrimary)
+         .fontSize(isTotal ? 10.5 : 10)
          .font(isTotal ? 'Helvetica-Bold' : 'Helvetica')
-         .text(cleanCell, LAYOUT.margin + padX + (i * colWidth), currentY + padY, { 
+         .text(cleanCell, LAYOUT.margin + padX + (i * colWidth), currentY + padY, {
            width: colWidth - (padX * 2),
            lineBreak: true
          });
     });
-    
+
     currentY += rowHeight;
   });
-  
-  // Bordure extérieure finale (de la dernière page utilisée)
-  doc.roundedRect(LAYOUT.margin, tableTopY, LAYOUT.contentWidth, currentY - tableTopY, 10)
-     .lineWidth(1).stroke(COLORS.borderLight);
-  
-  // Petite ligne décorative finale sous le tableau
-  doc.y = currentY + 4;
-  const lineY = doc.y;
-  doc.moveTo(LAYOUT.margin + 20, lineY)
-     .lineTo(LAYOUT.margin + 60, lineY)
-     .strokeColor(COLORS.mintGreen).lineWidth(2).stroke();
-  
+
+  // Bordure extérieure finale (cadre marine fin)
+  doc.rect(LAYOUT.margin, tableTopY, LAYOUT.contentWidth, currentY - tableTopY)
+     .lineWidth(0.4).strokeColor(COLORS.navy).stroke();
+
   doc.y = currentY + 18;
 }
 
-// Étape numérotée style Canva amélioré - DANS UNE CARTE LÉGÈRE
+// Étape numérotée luxe : cercle marine bordé or, fond papier, filet or
 function drawNumberedStep(doc, number, title, content) {
-  // Cercle numéroté coloré (alternance de couleurs)
-  const stepColors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink, COLORS.skyBlue];
-  const colorIndex = (parseInt(number) - 1) % stepColors.length;
-  const stepColor = stepColors[colorIndex];
-  
-  // Calculer la hauteur de la carte AVANT de réserver l'espace
   doc.fontSize(10).font('Helvetica');
-  const contentHeight = content ? doc.heightOfString(emojiToText(content), { 
-    width: LAYOUT.contentWidth - 56,
+  const contentHeight = content ? doc.heightOfString(emojiToText(content), {
+    width: LAYOUT.contentWidth - 64,
     lineGap: 4
   }) : 0;
-  const cardHeight = 32 + contentHeight + 16;
-  
-  // FIX : réserver l'espace UNE seule fois avec la hauteur exacte, PUIS lire startY
+  const cardHeight = 36 + contentHeight + 18;
+
   ensureSpace(doc, cardHeight + 12);
   const startY = doc.y;
-  
-  // Carte légère blanche autour de l'étape
-  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight, 10)
-     .fill(COLORS.bgWhite);
-  
-  // Barre de couleur à gauche (accent)
-  doc.roundedRect(LAYOUT.margin, startY, 4, cardHeight, 2).fill(stepColor);
-  
-  // Ombre subtile derrière le cercle (effet pro)
-  doc.circle(LAYOUT.margin + 31, startY + 19, 16).fillOpacity(0.1).fill(COLORS.textDark).fillOpacity(1);
-  
-  // Cercle principal avec le numéro
-  doc.circle(LAYOUT.margin + 30, startY + 18, 15).fill(stepColor);
+
+  // Carte papier avec cadre marine fin
+  doc.rect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight).fill(COLORS.bgPaper);
+  doc.rect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight)
+     .lineWidth(0.4).strokeColor(COLORS.borderMid).stroke();
+
+  // Filet or vertical à gauche (signature)
+  doc.rect(LAYOUT.margin, startY, 3, cardHeight).fill(COLORS.gold);
+
+  // Cercle marine numéroté + anneau or
+  doc.circle(LAYOUT.margin + 30, startY + 22, 16).fill(COLORS.navy);
+  doc.circle(LAYOUT.margin + 30, startY + 22, 16).lineWidth(0.8).strokeColor(COLORS.gold).stroke();
+
   const numStr = String(number);
   const numFontSize = numStr.length >= 2 ? 11 : 13;
-  doc.fillColor(COLORS.textDark).fontSize(numFontSize).font('Helvetica-Bold')
-     .text(numStr, LAYOUT.margin + 14, startY + 12, {
+  doc.fillColor(COLORS.textOnNavy).fontSize(numFontSize).font('Helvetica-Bold')
+     .text(numStr, LAYOUT.margin + 14, startY + 16, {
        width: 32,
        align: 'center',
        lineBreak: false
      });
-  
-  // Titre de l'étape
-  doc.fillColor(COLORS.textDark).fontSize(12).font('Helvetica-Bold')
-     .text(emojiToText(title), LAYOUT.margin + 56, startY + 12, { 
-       width: LAYOUT.contentWidth - 64
+
+  // Titre marine en lettres espacées
+  doc.fillColor(COLORS.navy).fontSize(11).font('Helvetica-Bold')
+     .text(emojiToText(title).toUpperCase(), LAYOUT.margin + 56, startY + 14, {
+       width: LAYOUT.contentWidth - 70,
+       characterSpacing: 0.8
      });
-  
-  // Contenu de l'étape avec plus d'espace
+
+  // Filet or court sous le titre
+  doc.moveTo(LAYOUT.margin + 56, startY + 33)
+     .lineTo(LAYOUT.margin + 96, startY + 33)
+     .lineWidth(0.6).strokeColor(COLORS.gold).stroke();
+
   if (content) {
     doc.fillColor(COLORS.textPrimary).fontSize(10).font('Helvetica')
-       .text(emojiToText(content), LAYOUT.margin + 56, startY + 36, { 
-         width: LAYOUT.contentWidth - 64,
+       .text(emojiToText(content), LAYOUT.margin + 56, startY + 40, {
+         width: LAYOUT.contentWidth - 70,
          lineGap: 4
        });
   }
-  
+
   doc.y = startY + cardHeight + 12;
 }
 
@@ -466,45 +490,46 @@ function renderContent(doc, text) {
     
     ensureSpace(doc, 30);
     
-    // Titre H1
+    // Titre H1 — section principale, marine + filet or
     if (trimmed.startsWith('# ')) {
       const titleText = emojiToText(trimmed.replace(/^#\s+/, ''));
+      doc.moveDown(0.6);
+      ensureSpace(doc, 48);
+
+      doc.fillColor(COLORS.navy).fontSize(18).font('Helvetica-Bold')
+         .text(titleText.toUpperCase(), LAYOUT.margin, doc.y, {
+           width: LAYOUT.contentWidth,
+           characterSpacing: 1.5
+         });
+      doc.moveDown(0.15);
+      drawGoldRule(doc, { y: doc.y, width: 50, x: LAYOUT.margin });
       doc.moveDown(0.5);
-      ensureSpace(doc, 40);
-      
-      doc.fillColor(COLORS.textDark).fontSize(20).font('Helvetica-Bold')
-         .text(titleText, LAYOUT.margin, doc.y, { width: LAYOUT.contentWidth });
-      
-      doc.moveDown(0.3);
     }
-    // Titre H2 (avec petit carré de couleur à gauche)
+    // Titre H2 — sous-section, libellé marine espacé + filet or à gauche
     else if (trimmed.startsWith('## ')) {
       const titleText = emojiToText(trimmed.replace(/^##\s+/, ''));
-      doc.moveDown(0.3);
-      ensureSpace(doc, 30);
-      
+      doc.moveDown(0.4);
+      ensureSpace(doc, 32);
+
       const titleY = doc.y;
-      // Petit carré coloré à gauche du titre (alternance)
-      const accentColors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink];
-      const accentColor = accentColors[Math.floor(Math.random() * accentColors.length)];
-      doc.roundedRect(LAYOUT.margin, titleY + 4, 4, 16, 2).fill(accentColor);
-      
-      doc.fillColor(COLORS.textDark).fontSize(13).font('Helvetica-Bold')
-         .text(titleText.toUpperCase(), LAYOUT.margin + 12, titleY, { 
-           width: LAYOUT.contentWidth - 12,
-           characterSpacing: 0.3
+      // Filet or vertical fin
+      doc.rect(LAYOUT.margin, titleY + 3, 2, 16).fill(COLORS.gold);
+
+      doc.fillColor(COLORS.navy).fontSize(12).font('Helvetica-Bold')
+         .text(titleText.toUpperCase(), LAYOUT.margin + 10, titleY, {
+           width: LAYOUT.contentWidth - 10,
+           characterSpacing: 1.2
          });
       doc.moveDown(0.4);
     }
     // Titre H3 - Étapes ou sous-section
     else if (trimmed.startsWith('### ')) {
       const titleText = emojiToText(trimmed.replace(/^###\s+/, ''));
-      
+
       if (titleText.match(/^Étape \d+/i) || titleText.match(/^Etape \d+/i)) {
         stepCounter++;
         const cleanTitle = titleText.replace(/^Étape \d+\s*:\s*/i, '').replace(/^Etape \d+\s*:\s*/i, '');
-        
-        // Collecter le contenu jusqu'à la prochaine ligne ## ou ### ou fin
+
         let stepContent = '';
         let j = i + 1;
         while (j < lines.length) {
@@ -513,43 +538,41 @@ function renderContent(doc, text) {
           if (next) stepContent += (stepContent ? ' ' : '') + next;
           j++;
         }
-        i = j - 1; // Avancer le pointeur
-        
+        i = j - 1;
+
         drawNumberedStep(doc, stepCounter, cleanTitle, stepContent);
       } else {
-        doc.fillColor(COLORS.textDark).fontSize(11).font('Helvetica-Bold')
-           .text(titleText, LAYOUT.margin, doc.y, { width: LAYOUT.contentWidth });
+        doc.fillColor(COLORS.navy).fontSize(11).font('Helvetica-Bold')
+           .text(titleText, LAYOUT.margin, doc.y, {
+             width: LAYOUT.contentWidth,
+             characterSpacing: 0.4
+           });
         doc.moveDown(0.3);
       }
     }
-    // Liste à puces - PLUS AÉRÉE
+    // Liste à puces — puce carrée or, alignement sobre
     else if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
       const itemText = emojiToText(trimmed.replace(/^[\-•\*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1'));
       ensureSpace(doc, 22);
-      
-      const bulletY = doc.y + 7;
-      // Puce colorée alternante
-      const bulletColors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink];
-      const bulletColor = bulletColors[Math.floor(Math.random() * bulletColors.length)];
-      doc.circle(LAYOUT.margin + 7, bulletY, 3).fill(bulletColor);
-      
+
+      // Puce : petit carré or
+      doc.rect(LAYOUT.margin + 4, doc.y + 5, 4, 4).fill(COLORS.gold);
+
       doc.fillColor(COLORS.textPrimary).fontSize(10).font('Helvetica')
-         .text(itemText, LAYOUT.margin + 20, doc.y, { 
-           width: LAYOUT.contentWidth - 24,
+         .text(itemText, LAYOUT.margin + 16, doc.y, {
+           width: LAYOUT.contentWidth - 20,
            lineGap: 3
          });
-      doc.moveDown(0.4);
+      doc.moveDown(0.35);
     }
-    // Citation
+    // Citation → carte sobre
     else if (trimmed.startsWith('> ')) {
       const quoteText = emojiToText(trimmed.replace(/^>\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1'));
       ensureSpace(doc, 40);
-      
+
       drawColoredCard(doc, {
         title: 'A retenir',
-        content: quoteText,
-        bgColor: COLORS.creamYellowBg,
-        textColor: COLORS.creamYellowDark
+        content: quoteText
       });
     }
     // Texte normal - PLUS AÉRÉ
@@ -576,36 +599,37 @@ function renderContent(doc, text) {
 // FOOTER avec palette de couleurs (style Canva)
 // ============================================================
 function drawCanvaFooter(doc, pageNumber, totalPages) {
-  const footerY = LAYOUT.pageHeight - 40;
+  const footerY = LAYOUT.pageHeight - 44;
 
-  // Palette de petits carrés colorés à gauche
-  const colors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink, COLORS.skyBlue];
-  colors.forEach((color, i) => {
-    doc.roundedRect(LAYOUT.margin + (i * 18), footerY, 14, 14, 2).fill(color);
-  });
+  // Filet or fin sur toute la largeur, signature luxe
+  doc.moveTo(LAYOUT.margin, footerY)
+     .lineTo(LAYOUT.margin + LAYOUT.contentWidth, footerY)
+     .lineWidth(0.4).strokeColor(COLORS.gold).stroke();
 
-  // Signature italique à droite UNIQUEMENT en dernière page
-  if (pageNumber === totalPages) {
-    doc.fillColor(COLORS.textSecondary).fontSize(11).font('Helvetica-Oblique')
-       .text('Merci pour votre confiance !', LAYOUT.margin, footerY + 1, {
+  // Logotype textuel à gauche : marine, lettres espacées
+  doc.fillColor(COLORS.navy).fontSize(8).font('Helvetica-Bold')
+     .text('RÉNOEXPERT', LAYOUT.margin, footerY + 10, {
+       width: 120,
+       characterSpacing: 2.5,
+       lineBreak: false
+     });
+
+  // Tagline centrale
+  doc.fillColor(COLORS.textMuted).fontSize(7.5).font('Helvetica-Oblique')
+     .text('Diagnostic immobilier par intelligence artificielle   ·   renoexpert.fr',
+       LAYOUT.margin, footerY + 11, {
          width: LAYOUT.contentWidth,
-         align: 'right'
-       });
-  }
-
-  // Ligne info au centre + pagination à droite
-  doc.fillColor(COLORS.textMuted).fontSize(8).font('Helvetica')
-     .text('RénoExpert  ·  Diagnostic par intelligence artificielle  ·  renoexpert.fr',
-       LAYOUT.margin, footerY + 18, {
-         width: LAYOUT.contentWidth,
-         align: 'center'
+         align: 'center',
+         characterSpacing: 0.5
        });
 
+  // Pagination à droite
   if (pageNumber && totalPages) {
-    doc.fillColor(COLORS.textSecondary).fontSize(9).font('Helvetica-Bold')
-       .text(`Page ${pageNumber} / ${totalPages}`, LAYOUT.margin, footerY + 18, {
+    doc.fillColor(COLORS.navy).fontSize(8).font('Helvetica-Bold')
+       .text(`${pageNumber} / ${totalPages}`, LAYOUT.margin, footerY + 11, {
          width: LAYOUT.contentWidth,
          align: 'right',
+         characterSpacing: 1,
          lineBreak: false
        });
   }
@@ -615,37 +639,48 @@ function drawCanvaFooter(doc, pageNumber, totalPages) {
 // PAGE 1 : EN-TÊTE PRINCIPAL STYLE CANVA
 // ============================================================
 function drawCanvaHeader(doc, options) {
-  const { titleMain, titleSub, icon } = options;
-  
-  // Petite décoration en haut (3 ronds colorés)
-  const decoY = 30;
+  const { titleMain, titleSub } = options;
   const centerX = LAYOUT.pageWidth / 2;
-  doc.circle(centerX - 24, decoY, 5).fill(COLORS.mintGreen);
-  doc.circle(centerX, decoY, 5).fill(COLORS.creamYellow);
-  doc.circle(centerX + 24, decoY, 5).fill(COLORS.coralRed);
-  
-  // Grand titre noir
-  doc.fillColor(COLORS.textDark).fontSize(42).font('Helvetica-Bold')
-     .text(titleMain, LAYOUT.margin, 60, { 
+
+  // Bandeau supérieur marine très fin (signature)
+  doc.rect(0, 0, LAYOUT.pageWidth, 14).fill(COLORS.navy);
+
+  // Filet or sous le bandeau
+  doc.moveTo(0, 14).lineTo(LAYOUT.pageWidth, 14)
+     .lineWidth(0.8).strokeColor(COLORS.gold).stroke();
+
+  // Petit libellé en haut centré : suffixe luxe
+  doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
+     .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
+       LAYOUT.margin, 35, {
+         width: LAYOUT.contentWidth,
+         align: 'center',
+         characterSpacing: 1.2,
+         lineBreak: false
+       });
+
+  // Grand titre marine en haut, classique haut de gamme
+  doc.fillColor(COLORS.navy).fontSize(36).font('Helvetica-Bold')
+     .text(titleMain, LAYOUT.margin, 60, {
        width: LAYOUT.contentWidth,
        align: 'center',
-       lineGap: -8
+       characterSpacing: 2,
+       lineGap: -6
      });
-  
-  // Sous-titre
-  doc.fillColor(COLORS.textPrimary).fontSize(16).font('Helvetica')
-     .text(titleSub, LAYOUT.margin, doc.y + 4, { 
+
+  // Filet doré sous le titre
+  doc.moveDown(0.4);
+  const lineY = doc.y;
+  drawGoldRule(doc, { y: lineY, width: 60 });
+  doc.y = lineY + 12;
+
+  // Sous-titre en italique discret
+  doc.fillColor(COLORS.textSecondary).fontSize(11).font('Helvetica-Oblique')
+     .text(titleSub, LAYOUT.margin, doc.y, {
        width: LAYOUT.contentWidth,
        align: 'center'
      });
-  
-  // Petite ligne décorative sous le titre
   doc.moveDown(0.8);
-  const lineY = doc.y;
-  const lineLength = 60;
-  const lineStartX = (LAYOUT.pageWidth - lineLength) / 2;
-  doc.roundedRect(lineStartX, lineY, lineLength, 3, 1.5).fill(COLORS.textDark);
-  doc.y = lineY + 18;
 }
 
 // ============================================================
