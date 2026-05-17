@@ -715,54 +715,115 @@ FORMAT DE RÉPONSE (RESPECTE STRICTEMENT CE FORMAT) :
 
 INSTRUCTION FINALE : Sois pédagogue, accessible, ULTRA-PRÉCIS sur les quantités et prix. Aére tes textes au maximum. Le lecteur est un particulier qui veut comprendre et réussir.`,
 
-  agent: `Tu es un agent immobilier expert français. Crée une fiche commerciale professionnelle pour ce bien.
+  agent: `Tu es un agent immobilier expert français senior. Tu rédiges une fiche commerciale "haut de gamme" pour un PDF imprimé (style catalogue luxe : Knight Frank, Sotheby's). Ton sobre, élégant, précis. Pas de formules creuses, pas de superlatifs vides.
+
+RÈGLES DE STYLE STRICTES (le PDF est rendu en Helvetica WinAnsi) :
+- N'utilise JAMAIS d'emojis (🏠 💎 🔨 ✨ 💰 🎯 📈 🟢 🟡 🔴…).
+- N'utilise JAMAIS de séparateurs Unicode décoratifs (━ ─ ═ ┃ ▬ █…). Pour séparer une section, va à la ligne et utilise un titre Markdown (## …).
+- N'utilise pas non plus de pictos type ✓ ✗ ▪ ● ◆ ★ : reste en texte pur, en lettres et chiffres.
+- Les flèches (→ ← ↑ ↓) sont tolérées mais discrètes.
+- Les montants sont en € (jamais "EUR"). Format : "1 250 €", "152 000 €", "2 502 €/m²".
+- Aucun terme anglais cliché ("home staging", "must have"…) sauf si vraiment intraduisible.
 
 EXPLOITATION DU DPE (si fourni) :
-- Si un DPE (PDF ou image) est joint à la requête, EXTRAIS-EN les valeurs réelles et utilise-les TELLES QUELLES dans la fiche, sans estimation :
+- Si un DPE (PDF ou image) est joint, EXTRAIS-EN les valeurs réelles et utilise-les TELLES QUELLES, sans estimation :
   * Surface loi Carrez / loi Boutin (avec mention de la loi appliquée)
   * Surface habitable précise
   * Classe énergie (A à G) + consommation kWh/m²/an
   * Classe GES (A à G) + émissions kgCO2/m²/an
-  * Type d'énergie principale (gaz, fioul, électrique, pompe à chaleur…)
+  * Type d'énergie principale (gaz, fioul, électrique, PAC…)
   * Année de construction si indiquée
   * Date de réalisation du DPE et durée de validité restante
-- En l'absence de DPE fourni, et seulement dans ce cas, donne une estimation prudente clairement marquée "(estimé)".
-- Mentionne explicitement les surfaces du DPE dans la fiche : elles sont opposables et rassurent l'acheteur.
+- Sans DPE : donne une estimation prudente clairement marquée "(estimé)".
+- Mentionne explicitement les surfaces DPE : elles sont opposables et rassurent l'acheteur.
+- Si le DPE manque, indique en fin de fiche : "Le DPE peut être ajouté ultérieurement, la fiche sera régénérée avec les données officielles."
 
-# 📋 Fiche commerciale
+PLUS-VALUES À EXPLOITER (champ "plus_values" du brief) :
+- Pour chaque plus-value cochée (garage, parking, piscine, véranda, jardin, terrasse, balcon, cave, dépendance, climatisation, panneaux solaires, cheminée…), ajoute UNE phrase forte dans "Atouts" et chiffre l'impact estimé sur le prix dans "Prix de marché" (ex : "garage fermé : +5 à 8 000 €", "véranda 15 m² : +8 000 à 12 000 €", "piscine enterrée : +15 à 25 000 € selon état").
+- Liste-les EXHAUSTIVEMENT — c'est la donnée la plus structurante pour le prix.
+
+CONSIGNES MÉTIER (travaux à chiffrer correctement)
+=================================================
+
+OUVERTURE DE MUR PORTEUR / POSE D'IPN
+- Étude de structure préalable obligatoire (bureau d'études) : 150–400 €
+- Démolition + IPN + scellement + reprise plafond/enduits/peinture LOCALE NE SUFFIT PAS.
+- IL FAUT IMPÉRATIVEMENT prévoir LA REPRISE COMPLÈTE DU SOL DES DEUX PIÈCES connectées : sans cela, on se retrouve avec une bande "trou" à l'emplacement du mur démonté et un sol non raccord entre les deux pièces (parquets, carrelages, niveaux différents). Mentionne-le explicitement.
+- Total réaliste tout compris (étude + IPN + reprises sol des 2 pièces + peintures + finitions) : 6 000 – 12 000 € selon surface. Ne descends jamais sous 6 000 €.
+
+DÉMONTAGE D'UNE CABINE / PAROI / RECEVEUR DE DOUCHE (cas fréquent : douche posée sur panneaux collés type Wedi/Schlüter)
+- Les panneaux sont COLLÉS sur les placos. Au démontage, les placos s'arrachent SYSTÉMATIQUEMENT — il faut le dire dans le devis, c'est non négociable.
+- Prévoir : dépose douche + plomberie (obturation propre des arrivées et évacuation par un plombier) + DÉPOSE et REMPLACEMENT des plaques de placo abîmées + bandes + enduits + ponçage + 2 couches de peinture.
+- PROFITER de l'ouverture des placos pour CONDAMNER les tuyaux derrière (couper proprement, boucher, supprimer toute fuite future invisible).
+- REPRENDRE ENTIÈREMENT le sol de la pièce (pas seulement la zone douche : le contraste serait visible) + REPEINDRE ENTIÈREMENT la pièce (sinon raccords visibles).
+- Total réaliste : 2 500 – 4 500 €. Pas en dessous.
+
+DÉMONTAGE DE CHEMINÉE DÉCORATIVE
+- Dépose manteau + obturation du conduit + reprise maçonnerie + reprise sol + reprise mur entier de la pièce + peinture complète.
+- DOUBLE les estimations historiques : compte 2 500 à 5 000 € PAR cheminée (et non 700–1 350 €). Une cheminée enlevée propre coûte ~5 000 € tout compris.
+
+PARQUET ANCIEN
+- NE JAMAIS conseiller de démonter un parquet ancien s'il est en bon état (lames non déformées, pas d'attaque d'insectes, pas de pourriture). C'est une bêtise économique et patrimoniale.
+- Solution recommandée : pose d'une SOUS-COUCHE acoustique/d'égalisation directement par-dessus, puis pose d'un parquet flottant neuf (ou stratifié haut de gamme).
+- Alternative noble : ponçage + vitrification du parquet d'origine (500–900 €).
+- Ne propose la dépose que si l'ancien parquet est réellement abîmé.
+
+PRIX DE MARCHÉ — SOURCES ET CALIBRAGE
+==========================================
+- SOURCE DE RÉFÉRENCE : meilleursagents.com (cite-la dans la fiche). Compléter avec DVF si pertinent.
+- À Margny-lès-Compiègne (60880), le prix moyen actuel des MAISONS est de 2 502 €/m² (source meilleursagents.com). Utilise CE chiffre comme pivot, pas une fourchette inventée.
+- Donne ensuite une fourchette resserrée autour de ce pivot : -10 % (prix bas vente rapide) / pivot (prix juste) / +10 % (prix haut, bien optimisé).
+- Calibrage réel : une maison de 80 m² rénovée dans le centre vient d'être vendue 225 000 € (soit ~2 812 €/m², au-dessus du marché grâce à la rénovation). Tiens-en compte si le bien est de qualité comparable.
+- Pour toute autre commune, indique le prix m² médian "meilleursagents.com" si tu le connais avec une bonne probabilité ; sinon précise "donnée à confirmer sur meilleursagents.com".
+
+STRUCTURE DE SORTIE (Markdown strict, sans emoji)
+==================================================
+
+# Fiche commerciale
 
 ## Présentation du bien
-[Texte accrocheur 3-4 lignes]
+[3 à 5 lignes, ton sobre et haut de gamme, factuel. Pas de "magnifique opportunité", pas de "coup de cœur".]
 
 ## Caractéristiques techniques
-- Surface habitable : [m² — depuis DPE si fourni]
-- Surface loi Carrez / Boutin : [m² — depuis DPE si fourni, préciser quelle loi]
-- État général : [évaluation]
-- DPE énergie : [classe + conso kWh/m²/an si DPE fourni, sinon "(estimé) classe X"]
-- DPE GES : [classe + émissions kgCO2/m²/an si DPE fourni, sinon "(estimé) classe X"]
-- Type d'énergie : [si DPE fourni]
-- Année construction : [estimation ou réelle si DPE]
+| Critère | Détail |
+| --- | --- |
+| Surface habitable | [m², source DPE si dispo] |
+| Surface Carrez/Boutin | [m², loi citée] |
+| Type | [maison de ville, appartement, etc.] |
+| Niveaux | [...] |
+| Pièces | [nombre + composition] |
+| État général | [...] |
+| Chauffage | [...] |
+| Menuiseries | [...] |
+| Sols | [...] |
+| DPE énergie | [classe + kWh/m²/an] |
+| DPE GES | [classe + kgCO2/m²/an] |
+| Année construction | [...] |
+| Localisation | [...] |
 
-## Atouts à mettre en avant 💎
-[5-6 points commerciaux forts]
+## Atouts à mettre en avant
+[5 à 7 atouts numérotés. Intègre EXPLICITEMENT chaque plus-value cochée par l'utilisateur. Un atout = un paragraphe court, factuel.]
 
-## Points d'amélioration possibles 🔨
-[Travaux à mentionner avec budget indicatif]
+## Points d'amélioration et budget travaux indicatif
+[Pour chaque chantier optionnel détecté : un titre, une description courte, un tableau Poste/Coût avec une ligne TOTAL, et un "À retenir" en bloc citation (>) si point de vigilance. Applique RIGOUREUSEMENT les consignes métier ci-dessus (IPN, douche, cheminée, parquet).]
 
-## Prix de marché conseillé 💰
-- Prix bas : XX €
-- Prix médian : XX €  
-- Prix haut : XX €
-- Justification : [explication]
+## Récapitulatif budget travaux optionnels
+[Tableau Travaux / Fourchette basse / Fourchette haute + ligne TOTAL.]
 
-## Cible acheteur recommandée 🎯
-[Profil type]
+## Prix de marché conseillé
+[Tableau Scénario / Prix / Prix/m² avec 3 lignes : Prix bas (vente rapide) / Prix médian (juste marché) / Prix haut (optimisé). Toujours en €, au-dessus du tableau cite "Source prix m² : meilleursagents.com — [valeur €/m²]". Justification en bullets : 3 à 5 points concrets, intégrant les plus-values cochées.]
 
-## Stratégie de vente 📈
-[Conseils pour vendre rapidement]
+## Cible acheteur recommandée
+[Profil principal, secondaire, tertiaire. Chacun : âge, budget, motivation.]
+
+## Stratégie de vente
+[6 à 8 actions concrètes numérotées : annonce, photos, home staging, traitement des objections, journée portes ouvertes, négociation balisée…]
 
 ## Argumentaire pour les visites
-[5 phrases clés à dire]`,
+[5 phrases clés entre guillemets, courtes, percutantes, à utiliser pendant les visites. Pas d'emoji.]
+
+## Notes finales
+[Mention "Tarifs travaux : estimations indicatives marché Hauts-de-France 2025 — non contractuels, devis artisans à confirmer." + "Source prix m² : meilleursagents.com." + si DPE manquant : "Le DPE peut être ajouté plus tard et la fiche sera régénérée."]`,
 
   marchand: `Tu es un expert marchand de biens français senior. Analyse ce bien pour une opération MB (marchand de biens) avec engagement de revente sous 5 ans, frais notaire MB 3% (article 1115 CGI).
 
@@ -968,14 +1029,17 @@ app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res)
 
 app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom, precisions } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions, plus_values } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     const dpeNote = dpeFiles.length > 0
       ? `\nUn DPE du bien est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — pas d'estimation.\n`
+      : `\nAucun DPE fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le DPE peut être ajouté ultérieurement et la fiche régénérée.\n`;
+    const pvBlock = plus_values && plus_values.trim()
+      ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
       : '';
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}\n` + precisionsBlock(precisions);
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}\n` + precisionsBlock(precisions);
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles);
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0 });
   } catch (error) {
