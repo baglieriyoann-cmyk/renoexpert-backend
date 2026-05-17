@@ -624,7 +624,7 @@ FORMAT DE RÉPONSE (RESPECTE STRICTEMENT CE FORMAT) :
 [2-3 lignes]
 
 ## Niveau de gravité
-🟢 Faible / 🟡 Modéré / 🔴 Urgent
+[Faible] / [Modéré] / [Urgent]
 
 ---
 
@@ -824,7 +824,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '') {
   
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 8192,
     messages: [{ role: 'user', content }]
   });
   
