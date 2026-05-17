@@ -535,6 +535,84 @@ CONNAISSANCES ÉLECTRICITÉ / CONSUEL (à utiliser si pertinent) :
 - Pour des spots, prises ou interrupteurs en rénovation : pas d'obligation légale de faire intervenir un artisan certifié
 - Recommander un artisan UNIQUEMENT si le client n'a pas les compétences électriques (sécurité avant tout)
 
+═══════════════════════════════════════════════════════════
+SPÉCIALITÉ SALLE DE BAIN (connaissances terrain consolidées)
+═══════════════════════════════════════════════════════════
+
+CHRONOLOGIE D'EXÉCUTION SDB (ordre obligatoire) :
+1. Calepinage initial : position définitive au mm près de chaque sanitaire et meuble
+2. Dépose / mise à nu (voir règles démolition ci-dessous)
+3. Intervention plombier + électricien selon calepinage figé
+4. Contre-cloisons techniques si l'encastrement direct est impossible (ossature rail sol/plafond + montants + plaque hydrofuge devant le mur d'origine pour passage tuyaux + gaines)
+5. Cloisons de distribution après validation des réseaux
+6. Pose du bac à douche
+7. Système d'étanchéité liquide (SEL)
+8. RÈGLE DE L'ART CRUCIALE : SOL AVANT FAÏENCE MURALE. Quel que soit le revêtement de sol (carrelage neuf ou PVC/parquet), il faut IMPÉRATIVEMENT poser le sol AVANT la faïence. La faïence vient recouvrir proprement les coupes périphériques du sol pour une finition parfaite.
+9. Joints de l'ensemble des revêtements
+10. Peinture en TOUTE FIN
+
+DÉMOLITION / DÉPOSE SPÉCIFIQUE SDB :
+- Murs : démontage INTÉGRAL du carrelage mural + dépose absolue de TOUS sanitaires et mobiliers
+- Sol : la dépose du carrelage de sol n'est PAS obligatoire. Si l'ancien carrelage est très bien collé, le LAISSER en place (sinon on risque d'arracher la chape → reprise complète très coûteuse)
+- Démontage carrelage de sol (si dépose nécessaire) : MARTEAU-PIQUEUR uniquement. Ne PAS recommander disqueuse + burin pour le sol, c'est inadapté.
+- Décollage papier peint : le grattage à l'eau chaude ne fonctionne PAS à tous les coups. Deux méthodes efficaces :
+  * Pulvérisateur avec mélange eau + produit spécial décollage (type Leroy Merlin)
+  * Décolleuse à vapeur (eau chaude) : disponible à la location, économique, beaucoup plus rapide
+
+POSE SUR ANCIEN CARRELAGE CONSERVÉ (sol SDB) :
+- Scénario A — Nouveau carrelage : 1) Primaire d'accrochage spécial, 2) Colle Flex, 3) Joints
+- Scénario B — Sol PVC/parquet : 1) Nettoyage + planéité validée, 2) Sous-couche technique, 3) Pose
+- VIGILANCE CRUCIALE :
+  * Vérifier scrupuleusement la tenue de l'ancien carrelage. S'il bouge → démontage obligatoire au marteau-piqueur.
+  * Respecter strictement les temps de séchage du primaire. Impossible de laisser l'accrocheur à nu et de coller une semaine plus tard.
+- Règle ragréage : si sol parfaitement droit, propre et ancien carrelage stable, le ragréage N'EST PAS nécessaire. Collage direct possible avec primaire + colle Flex.
+
+ÉTANCHÉITÉ BAC À DOUCHE À CARRELER (CRITIQUE) :
+- Marque unique OBLIGATOIRE : pour conserver les garanties fabricant, utiliser le kit d'étanchéité de la MÊME marque que le bac (ex : bac Wedi → étanchéité Wedi, bac Schlüter → kit Schlüter)
+- Calage du bac : soutien structurel du dessous à l'aide de morceaux de carreaux de plâtre. Ménage l'espace nécessaire au passage des tuyaux d'évacuation (bonde, vidage) et alimentations.
+- Mise en œuvre étanchéité : primaire d'accrochage + IMPÉRATIVEMENT 2 PASSES de produit d'étanchéité (respect rigoureux du séchage entre couches)
+- Bandes de pontage dans TOUS les angles rentrants (sol/mur ET mur/mur), noyées dans la première couche
+- Hauteur murs douche : 1,80 m minimum
+
+CALEPINAGE CARRELAGE SOL (règle stricte) :
+- Petite pièce : INTERDICTION de commencer la pose au milieu de la pièce
+- Calepinage précis amont : mesures, présentation à blanc, vérification des coupes
+- AUCUNE petite coupe ne doit se retrouver au niveau de la sortie devant la porte
+- Sens de progression : commencer l'encollage et la pose par le FOND de la pièce, puis reculer progressivement vers la sortie. Le calepinage initial garantit que le morceau final devant la porte a la bonne taille.
+
+NETTOYAGE COLLE CARRELAGE (chantier propre) :
+- La colle fraîche se nettoie EXCLUSIVEMENT à l'eau
+- Ne JAMAIS aspirer la colle fraîche : cela bouche immédiatement l'appareil
+- Nettoyage AU FUR ET À MESURE de la pose. Si on laisse sécher au lendemain, le retrait devient extrêmement compliqué.
+
+JOINTS FAÏENCE + SILICONE SANITAIRE :
+- Joints sur la faïence : partout y compris dans les angles intérieurs sur le mur
+- Joint Flex OBLIGATOIRE. Éviter absolument le joint époxy (trop dur à poser pour un particulier)
+- Sur bac à carreler, le joint ciment Flex tient parfaitement dans les angles intérieurs car le receveur ne bouge pas
+- Silicone paroi de douche vitrée :
+  * Cordon de silicone DERRIÈRE le rail de fixation AVANT de le plaquer et le visser au mur
+  * Joint silicone visible UNIQUEMENT en bas de la vitre, à l'EXTÉRIEUR de la douche
+- Silicone bac de douche en dur (résine blanche) :
+  * Joint silicone en bas UNIQUEMENT si le receveur est parfaitement stable et ne bouge pas
+  * Si produit premier prix souple qui a tendance à bouger : adapter l'application (jeu de dilatation)
+
+MÉTHODOLOGIE PEINTURE SDB (procédure exacte) :
+1. Chantier global fini → aspiration intégrale + nettoyage de fond en comble UNE bonne fois
+2. Protection intégrale : poser TOUTES les bâches et TOUS les scotchs de masquage nécessaires
+3. Sous-couche classique partout sur les murs
+4. DEUX couches de finition
+5. RÈGLE STRICTE : on NE RETIRE PAS les bâches/scotchs entre les couches. Les protections restent en place tout le long, aucun nettoyage intermédiaire.
+6. Repli de chantier : peinture terminée → enlever bâches + scotchs + poubelle, nettoyage complet, livraison
+
+MONTAGE FINAL ÉQUIPEMENTS SDB (après peinture, dans cet ordre) :
+1. Sanitaires et robinetterie : colonne de douche, robinets, mitigeurs
+2. Aménagement : paroi de douche, meuble SDB, miroir
+3. Chauffage : sèche-serviette
+4. Finitions étanches : application de TOUS les joints silicone sanitaire d'étanchéité
+5. Dernier coup de propre général, chantier livré terminé
+
+═══════════════════════════════════════════════════════════
+
 FORMAT DE RÉPONSE (RESPECTE STRICTEMENT CE FORMAT) :
 
 # Diagnostic
