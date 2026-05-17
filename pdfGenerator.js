@@ -74,11 +74,19 @@ function emojiToText(text) {
   const map = {
     '🏠': '', '🔧': '', '💼': '', '🏢': '', '📍': '', '📐': '',
     '📅': '', '✅': '✓', '❌': '✗', '⚠️': '!', '⚠': '!',
-    '💡': '', '🛡️': '', '💰': '', '🟢': '●', '🟡': '●', '🔴': '●',
+    '💡': '', '🛡️': '', '💰': '',
+    // Niveaux de gravité : utiliser du texte lisible (les caractères Unicode ronds ne sont pas dans WinAnsi -> rendu cassé "%Ï")
+    '🟢': '[Faible]', '🟡': '[Modéré]', '🔴': '[Urgent]',
     '📋': '', '📝': '', '🎯': '', '👍': '', '👎': '', '📊': '',
-    '🤖': '', '⭐': '★', '✨': '', '🎁': '', '🚀': '', '📞': '',
+    '🤖': '', '⭐': '*', '✨': '', '🎁': '', '🚀': '', '📞': '',
     '📧': '', '👤': '', '🔨': '', '🛠️': '', '🏘️': '', '⚖️': '',
-    '€': 'EUR'
+    '€': 'EUR',
+    // Caractères Unicode rares qui ne passent pas en WinAnsi (Helvetica par défaut)
+    '●': '*', '■': '*', '▪': '*', '◆': '*', '★': '*',
+    '\u201C': '"', '\u201D': '"', '\u2018': "'", '\u2019': "'", '…': '...',
+    '→': '->', '←': '<-', '↑': '^', '↓': 'v',
+    '≥': '>=', '≤': '<=', '≠': '!=', '≈': '~',
+    '×': 'x', '÷': '/', '°': 'deg'
   };
   let result = text;
   for (const [e, r] of Object.entries(map)) {
@@ -116,11 +124,7 @@ function ensureSpace(doc, neededHeight) {
 function drawColoredCard(doc, options) {
   const { title, content, bgColor, accentColor, textColor, icon } = options;
   
-  ensureSpace(doc, 80);
-  
-  const startY = doc.y;
-  
-  // Calculer la hauteur nécessaire
+  // Calculer la hauteur nécessaire AVANT de réserver l'espace
   doc.fontSize(10).font('Helvetica');
   const contentHeight = content ? doc.heightOfString(emojiToText(content), { 
     width: LAYOUT.contentWidth - 60 
@@ -128,7 +132,9 @@ function drawColoredCard(doc, options) {
   const titleHeight = title ? 22 : 0;
   const cardHeight = titleHeight + contentHeight + 30;
   
+  // FIX : réserver l'espace UNE fois avec la hauteur exacte, PUIS lire startY
   ensureSpace(doc, cardHeight + 10);
+  const startY = doc.y;
   
   // Carte avec coins arrondis
   doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight, 12)
@@ -353,16 +359,12 @@ function drawDataTable(doc, headers, rows) {
 
 // Étape numérotée style Canva amélioré - DANS UNE CARTE LÉGÈRE
 function drawNumberedStep(doc, number, title, content) {
-  ensureSpace(doc, 80);
-  
-  const startY = doc.y;
-  
   // Cercle numéroté coloré (alternance de couleurs)
   const stepColors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink, COLORS.skyBlue];
   const colorIndex = (parseInt(number) - 1) % stepColors.length;
   const stepColor = stepColors[colorIndex];
   
-  // Calculer la hauteur de la carte
+  // Calculer la hauteur de la carte AVANT de réserver l'espace
   doc.fontSize(10).font('Helvetica');
   const contentHeight = content ? doc.heightOfString(emojiToText(content), { 
     width: LAYOUT.contentWidth - 56,
@@ -370,7 +372,9 @@ function drawNumberedStep(doc, number, title, content) {
   }) : 0;
   const cardHeight = 32 + contentHeight + 16;
   
-  ensureSpace(doc, cardHeight + 10);
+  // FIX : réserver l'espace UNE seule fois avec la hauteur exacte, PUIS lire startY
+  ensureSpace(doc, cardHeight + 12);
+  const startY = doc.y;
   
   // Carte légère blanche autour de l'étape
   doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight, 10)
