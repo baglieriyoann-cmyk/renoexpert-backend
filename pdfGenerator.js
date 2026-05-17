@@ -247,15 +247,10 @@ function drawLevelBadge(doc, level) {
 function drawDataTable(doc, headers, rows) {
   const colCount = headers.length;
   const colWidth = LAYOUT.contentWidth / colCount;
-  const rowHeight = 34;
   const headerHeight = 38;
-  
-  // Détecter si c'est un tableau "TOTAL" (dernière ligne souvent en gras)
-  const totalHeight = headerHeight + (rows.length * rowHeight) + 10;
-  
-  ensureSpace(doc, totalHeight + 10);
-  
-  const startY = doc.y;
+  const bottomMargin = 60;
+  const padX = 14;
+  const padY = 12;
   
   // Détection des lignes "TOTAL" pour mise en valeur
   const isTotalRow = (row) => {
@@ -263,28 +258,62 @@ function drawDataTable(doc, headers, rows) {
     return firstCell.includes('total') || firstCell.includes('**');
   };
   
-  // Header avec dégradé vert menthe
-  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, headerHeight, 10)
-     .fill(COLORS.mintGreen);
+  // Calcule la hauteur nécessaire d'une cellule en fonction du contenu (wrap auto)
+  const measureRowHeight = (row) => {
+    let maxHeight = 0;
+    row.forEach((cell, i) => {
+      const cleanCell = emojiToText((cell || '').toString()).replace(/\*\*/g, '');
+      doc.fontSize(isTotalRow(row) ? 11 : 10)
+         .font(isTotalRow(row) ? 'Helvetica-Bold' : 'Helvetica');
+      const h = doc.heightOfString(cleanCell, { width: colWidth - (padX * 2) });
+      if (h > maxHeight) maxHeight = h;
+    });
+    return Math.max(28, maxHeight + (padY * 2));
+  };
   
-  headers.forEach((header, i) => {
-    const cleanHeader = emojiToText(header).replace(/\*\*/g, '');
-    doc.fillColor(COLORS.textDark).fontSize(10).font('Helvetica-Bold')
-       .text(cleanHeader, LAYOUT.margin + 14 + (i * colWidth), startY + 14, { 
-         width: colWidth - 28,
-         lineBreak: true,
-         characterSpacing: 0.2
-       });
-  });
+  // Dessine l'en-tête du tableau (réutilisable lors d'un saut de page)
+  const drawHeader = (startY) => {
+    doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, headerHeight, 10)
+       .fill(COLORS.mintGreen);
+    
+    headers.forEach((header, i) => {
+      const cleanHeader = emojiToText(header).replace(/\*\*/g, '');
+      doc.fillColor(COLORS.textDark).fontSize(10).font('Helvetica-Bold')
+         .text(cleanHeader, LAYOUT.margin + padX + (i * colWidth), startY + 14, { 
+           width: colWidth - (padX * 2),
+           lineBreak: true,
+           characterSpacing: 0.2
+         });
+    });
+    return startY + headerHeight;
+  };
   
-  // Lignes alternées
-  let currentY = startY + headerHeight;
+  // S'assurer qu'il y a au moins assez de place pour le header + 1 ligne
+  ensureSpace(doc, headerHeight + 40);
+  
+  let startY = doc.y;
+  let currentY = drawHeader(startY);
+  let tableTopY = startY; // pour tracer la bordure extérieure par page
+  
   rows.forEach((row, rowIdx) => {
     const isTotal = isTotalRow(row);
+    const rowHeight = measureRowHeight(row);
     
-    // Background
+    // FIX PAGINATION : si la ligne ne tient pas, on ferme le tableau, on saute de page, on redessine le header
+    if (currentY + rowHeight > LAYOUT.pageHeight - bottomMargin) {
+      // Bordure extérieure de la portion de tableau sur cette page
+      doc.roundedRect(LAYOUT.margin, tableTopY, LAYOUT.contentWidth, currentY - tableTopY, 10)
+         .lineWidth(1).stroke(COLORS.borderLight);
+      
+      doc.addPage();
+      fillBackground(doc);
+      doc.y = LAYOUT.margin;
+      tableTopY = doc.y;
+      currentY = drawHeader(tableTopY);
+    }
+    
+    // Background de la ligne
     if (isTotal) {
-      // Ligne TOTAL en jaune crème (mise en valeur)
       doc.roundedRect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight, 0)
          .fill(COLORS.creamYellowBg);
     } else if (rowIdx % 2 === 0) {
@@ -293,23 +322,23 @@ function drawDataTable(doc, headers, rows) {
       doc.rect(LAYOUT.margin, currentY, LAYOUT.contentWidth, rowHeight).fill('#FBFBF8');
     }
     
+    // Contenu des cellules avec WRAP (lineBreak: true, plus de troncature ellipsis)
     row.forEach((cell, i) => {
       const cleanCell = emojiToText((cell || '').toString()).replace(/\*\*/g, '');
       doc.fillColor(isTotal ? COLORS.textDark : COLORS.textPrimary)
          .fontSize(isTotal ? 11 : 10)
          .font(isTotal ? 'Helvetica-Bold' : 'Helvetica')
-         .text(cleanCell, LAYOUT.margin + 14 + (i * colWidth), currentY + 12, { 
-           width: colWidth - 28,
-           lineBreak: false,
-           ellipsis: true
+         .text(cleanCell, LAYOUT.margin + padX + (i * colWidth), currentY + padY, { 
+           width: colWidth - (padX * 2),
+           lineBreak: true
          });
     });
     
     currentY += rowHeight;
   });
   
-  // Bordure extérieure arrondie
-  doc.roundedRect(LAYOUT.margin, startY, LAYOUT.contentWidth, currentY - startY, 10)
+  // Bordure extérieure finale (de la dernière page utilisée)
+  doc.roundedRect(LAYOUT.margin, tableTopY, LAYOUT.contentWidth, currentY - tableTopY, 10)
      .lineWidth(1).stroke(COLORS.borderLight);
   
   // Petite ligne décorative finale sous le tableau
