@@ -458,11 +458,16 @@ Sois précis, factuel, professionnel.`,
 RÈGLES STRICTES :
 - N'utilise JAMAIS le mot "DIY". Utilise : "à faire soi-même", "faire faire par un artisan", "bricoleur confirmé", "bricoleur débutant"
 - Sois TRÈS précis sur les quantités, dimensions, dosages
-- Insiste sur l'aspiration à CHAQUE étape (point essentiel pour la qualité)
+- Insiste sur l'aspiration aux ÉTAPES MAJEURES du chantier (point essentiel pour la qualité). Ne JAMAIS écrire "à chaque coupe" ou "après chaque découpe".
 - Mentionne la vérification d'alignement (règle ou laser) au fur et à mesure
 - Donne des prix réalistes 2026
 - Aére tes textes : des paragraphes COURTS (max 3-4 lignes par paragraphe), pas de blocs denses
 - Termine TOUJOURS par un tableau récapitulatif des coûts détaillé
+- FORMULATION POSITIVE OBLIGATOIRE : donne les instructions directement, sans expliquer ni justifier les règles internes. INTERDIT d'écrire dans le PDF :
+  * « Le rampant ne se carrelle pas » → écrire « Le rampant reçoit un enduit de lissage puis 2 couches de peinture »
+  * « Aspirer en fin de séance, pas à chaque coupe » → écrire « Aspirez la zone de coupe en fin de séance »
+  * « Ne pas retirer les croisillons avant 24h » → écrire « Laissez les croisillons en place jusqu'au séchage complet (24-48h), retrait au moment du jointoiement »
+  Le client final lit le document : il veut des consignes claires, pas des justifications de règles métier.
 
 CONNAISSANCES TECHNIQUES CARRELAGE :
 - Ragréage : 1.7 kg/m²/mm d'épaisseur
@@ -545,10 +550,22 @@ CONNAISSANCES ÉLECTRICITÉ / CONSUEL (à utiliser si pertinent) :
 SPÉCIALITÉ SALLE DE BAIN (connaissances terrain consolidées)
 ═══════════════════════════════════════════════════════════
 
-RAMPANTS EN SDB SOUS COMBLES (RÈGLE NON NÉGOCIABLE) :
-- Un rampant incliné NE SE CARRELE JAMAIS, même si le client demande "carrelage sur tous les murs". Le rampant se traite TOUJOURS en enduit de lissage + sous-couche + peinture satinée anti-humidité (2 couches).
-- Si le client demande explicitement carrelage partout : reformuler dans le PDF que "le rampant est traité en peinture, finition pro et durable, le carrelage sur rampant n'est pas recommandé en pose particulier".
-- Ne JAMAIS proposer de colle C2 TE anti-glissement "pour rampant" — pas de carrelage sur rampant point final.
+RAMPANTS EN SDB SOUS COMBLES (RÈGLE NON NÉGOCIABLE, NE PAS EXPLICITER DANS LE PDF) :
+- Règle interne (ne pas écrire) : un rampant incliné ne reçoit jamais de carrelage. Même demande client "carrelage partout" → rampant en peinture.
+- Formulation à utiliser dans le PDF (positive et directe) : « Le rampant reçoit un enduit de lissage, une sous-couche puis 2 couches de peinture spéciale pièce humide ».
+- INTERDIT d'écrire "le rampant ne se carrelle pas", "le carrelage sur rampant n'est pas recommandé", ou toute négation justifiant la règle.
+- Ne JAMAIS proposer de colle C2 TE anti-glissement "pour rampant".
+
+PONÇAGE DES ENDUITS DE LISSAGE :
+- Grain par défaut pour la finition avant peinture : 150 ou 180 (jamais 80, qui laisse des rayures sous peinture)
+- 80 grains uniquement pour décape grossier ou ponçage de gros plâtre de rebouchage
+- 120 grains acceptable en transition (rebouchage → finition)
+
+PEINTURE SDB (FINITIONS) :
+- Critère unique = "peinture spéciale pièce humide / salle de bain" (mention sur le pot, résistance à l'humidité + anti-moisissures)
+- Finition au choix client : mat, velours OU satin — les 3 sont aujourd'hui disponibles en formulation SDB
+- Ne plus imposer "satinée" par défaut. Proposer le mat ou velours en finition élégante, le satin si lessivage fréquent souhaité
+- Sous-couche acrylique d'accroche systématique en première passe
 
 CHRONOLOGIE D'EXÉCUTION SDB (ordre obligatoire) :
 1. Calepinage initial : position définitive au mm près de chaque sanitaire et meuble
@@ -842,34 +859,80 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '') {
   return message.content[0].text;
 }
 
+// Helper : bloc de précisions utilisateur à injecter dans le contexte si fourni
+function precisionsBlock(precisions) {
+  const p = (precisions || '').trim();
+  if (!p) return '';
+  return `\n═══════════════════════════════════════════════════════════
+PRÉCISIONS OBLIGATOIRES DE L'UTILISATEUR (à intégrer impérativement dans le rapport, dans les sections les plus pertinentes — chiffrer si c'est un coût, lister si ce sont des travaux, mentionner explicitement dans le PDF) :
+
+${p}
+═══════════════════════════════════════════════════════════
+
+`;
+}
+
+// Helper : analyse Claude sans photos (utilisé pour l'affinement)
+async function refineWithClaude(systemPrompt, previousAnalysis, instructions, context) {
+  const userPrompt = `${context || ''}Voici l'analyse précédente que tu avais produite :
+
+═══════════════════════════════════════════════════════════
+${previousAnalysis}
+═══════════════════════════════════════════════════════════
+
+L'utilisateur souhaite l'affiner avec les consignes suivantes :
+
+═══════════════════════════════════════════════════════════
+${instructions}
+═══════════════════════════════════════════════════════════
+
+CONSIGNE :
+- Réécris l'analyse COMPLÈTE en intégrant les consignes ci-dessus.
+- GARDE EXACTEMENT le même format de réponse (mêmes titres de sections, mêmes balises markdown # ## ###, mêmes tableaux markdown |...|).
+- Ne supprime aucune section utile. Modifie, ajoute ou affine selon les consignes.
+- N'invente pas d'informations factuelles nouvelles que tu ne pourrais pas déduire de l'analyse précédente et des consignes.
+- Si une consigne contredit l'analyse précédente, applique la consigne de l'utilisateur — c'est lui qui décide.
+- Réponds UNIQUEMENT avec l'analyse réécrite, sans préambule ni commentaire.
+
+${systemPrompt}`;
+
+  const message = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8192,
+    messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
+  });
+
+  return message.content[0].text;
+}
+
 app.post('/api/analyze/visite', upload.array('photos', 20), async (req, res) => {
   try {
-    const { surface, location } = req.body;
+    const { surface, location, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
+    const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n` + precisionsBlock(precisions);
     const analysis = await analyzeWithClaude(PROMPTS.visite, req.files, context);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur visite:', error);
-    
+
     // Notification email en cas d'erreur (optionnel)
     if (NOTIFICATION_EMAIL && BREVO_API_KEY) {
       sendEmail(NOTIFICATION_EMAIL, '⚠️ Erreur RénoExpert', emailTemplate(
-        'Erreur technique', 
+        'Erreur technique',
         `<p>Une erreur s'est produite sur le mode <strong>Visite</strong> :</p>
          <pre style="background: #ffe6e8; padding: 10px; border-radius: 6px;">${error.message}</pre>`
       ));
     }
-    
+
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res) => {
   try {
-    const { description } = req.body;
+    const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    const context = description ? `Description : ${description}\n\n` : '';
+    const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -880,9 +943,9 @@ app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res)
 
 app.post('/api/analyze/agent', upload.array('photos', 30), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n` + precisionsBlock(precisions);
     const analysis = await analyzeWithClaude(PROMPTS.agent, req.files, context);
     res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
@@ -893,7 +956,7 @@ app.post('/api/analyze/agent', upload.array('photos', 30), async (req, res) => {
 
 app.post('/api/analyze/marchand', upload.array('photos', 50), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
@@ -905,12 +968,77 @@ Nombre de lots envisagés : ${nb_lots}
 
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 
-`;
+` + precisionsBlock(precisions);
     const analysis = await analyzeWithClaude(PROMPTS.marchand, req.files, context);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
     console.error('Erreur marchand:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// ROUTES D'AFFINEMENT (sans photos, sur la base d'une analyse précédente)
+// ============================================================
+
+app.post('/api/refine/visite', async (req, res) => {
+  try {
+    const { previousAnalysis, instructions, surface, location } = req.body;
+    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
+    const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
+    const analysis = await refineWithClaude(PROMPTS.visite, previousAnalysis, instructions, context);
+    res.json({ success: true, analysis });
+  } catch (error) {
+    console.error('Erreur refine visite:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/refine/reparation', async (req, res) => {
+  try {
+    const { previousAnalysis, instructions, description } = req.body;
+    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
+    const context = description ? `Description initiale : ${description}\n\n` : '';
+    const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context);
+    res.json({ success: true, analysis });
+  } catch (error) {
+    console.error('Erreur refine reparation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/refine/agent', async (req, res) => {
+  try {
+    const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
+    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
+    const analysis = await refineWithClaude(PROMPTS.agent, previousAnalysis, instructions, context);
+    res.json({ success: true, analysis, agence_nom, agent_nom });
+  } catch (error) {
+    console.error('Erreur refine agent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/refine/marchand', async (req, res) => {
+  try {
+    const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
+    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
+    const context = `Société MB : ${mb_societe}
+Localisation : ${location}
+Surface : ${surface} m²
+Année construction : ${annee_construction}
+Prix demandé : ${prix_demande} €
+Stratégie : ${strategie}
+Nombre de lots envisagés : ${nb_lots}
+
+`;
+    const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context);
+    const frais_notaire_mb_3pct = prix_demande ? Math.round(parseFloat(prix_demande) * 0.03) : null;
+    res.json({ success: true, analysis, frais_notaire_mb_3pct });
+  } catch (error) {
+    console.error('Erreur refine marchand:', error);
     res.status(500).json({ error: error.message });
   }
 });
