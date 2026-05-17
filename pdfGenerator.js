@@ -388,8 +388,14 @@ function drawNumberedStep(doc, number, title, content) {
   
   // Cercle principal avec le numéro
   doc.circle(LAYOUT.margin + 30, startY + 18, 15).fill(stepColor);
-  doc.fillColor(COLORS.textDark).fontSize(13).font('Helvetica-Bold')
-     .text(String(number), LAYOUT.margin + 24, startY + 11, { width: 13, align: 'center' });
+  const numStr = String(number);
+  const numFontSize = numStr.length >= 2 ? 11 : 13;
+  doc.fillColor(COLORS.textDark).fontSize(numFontSize).font('Helvetica-Bold')
+     .text(numStr, LAYOUT.margin + 14, startY + 12, {
+       width: 32,
+       align: 'center',
+       lineBreak: false
+     });
   
   // Titre de l'étape
   doc.fillColor(COLORS.textDark).fontSize(12).font('Helvetica-Bold')
@@ -569,29 +575,40 @@ function renderContent(doc, text) {
 // ============================================================
 // FOOTER avec palette de couleurs (style Canva)
 // ============================================================
-function drawCanvaFooter(doc) {
+function drawCanvaFooter(doc, pageNumber, totalPages) {
   const footerY = LAYOUT.pageHeight - 40;
-  
+
   // Palette de petits carrés colorés à gauche
   const colors = [COLORS.mintGreen, COLORS.creamYellow, COLORS.coralRed, COLORS.powderPink, COLORS.skyBlue];
   colors.forEach((color, i) => {
     doc.roundedRect(LAYOUT.margin + (i * 18), footerY, 14, 14, 2).fill(color);
   });
-  
-  // Signature italique à droite (style manuscrit "Merci...")
-  doc.fillColor(COLORS.textSecondary).fontSize(11).font('Helvetica-Oblique')
-     .text('Merci pour votre confiance !', LAYOUT.margin, footerY + 1, { 
-       width: LAYOUT.contentWidth, 
-       align: 'right' 
-     });
-  
-  // Petite ligne info en dessous
-  doc.fillColor(COLORS.textMuted).fontSize(8).font('Helvetica')
-     .text('RénoExpert  ·  Diagnostic par intelligence artificielle  ·  renoexpert.fr', 
-       LAYOUT.margin, footerY + 18, { 
-         width: LAYOUT.contentWidth, 
-         align: 'center' 
+
+  // Signature italique à droite UNIQUEMENT en dernière page
+  if (pageNumber === totalPages) {
+    doc.fillColor(COLORS.textSecondary).fontSize(11).font('Helvetica-Oblique')
+       .text('Merci pour votre confiance !', LAYOUT.margin, footerY + 1, {
+         width: LAYOUT.contentWidth,
+         align: 'right'
        });
+  }
+
+  // Ligne info au centre + pagination à droite
+  doc.fillColor(COLORS.textMuted).fontSize(8).font('Helvetica')
+     .text('RénoExpert  ·  Diagnostic par intelligence artificielle  ·  renoexpert.fr',
+       LAYOUT.margin, footerY + 18, {
+         width: LAYOUT.contentWidth,
+         align: 'center'
+       });
+
+  if (pageNumber && totalPages) {
+    doc.fillColor(COLORS.textSecondary).fontSize(9).font('Helvetica-Bold')
+       .text(`Page ${pageNumber} / ${totalPages}`, LAYOUT.margin, footerY + 18, {
+         width: LAYOUT.contentWidth,
+         align: 'right',
+         lineBreak: false
+       });
+  }
 }
 
 // ============================================================
@@ -700,7 +717,7 @@ function generateVisitePDF(data, res) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc);
+    drawCanvaFooter(doc, i + 1, range.count);
   }
   
   doc.end();
@@ -775,7 +792,7 @@ function generateReparationPDF(data, res) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc);
+    drawCanvaFooter(doc, i + 1, range.count);
   }
   
   doc.end();
@@ -833,7 +850,7 @@ function generateAgentPDF(data, res) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc);
+    drawCanvaFooter(doc, i + 1, range.count);
   }
   
   doc.end();
@@ -899,7 +916,7 @@ function generateMarchandPDF(data, res) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc);
+    drawCanvaFooter(doc, i + 1, range.count);
   }
   
   doc.end();
