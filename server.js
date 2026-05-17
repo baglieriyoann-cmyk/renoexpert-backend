@@ -717,16 +717,31 @@ INSTRUCTION FINALE : Sois pédagogue, accessible, ULTRA-PRÉCIS sur les quantit�
 
   agent: `Tu es un agent immobilier expert français. Crée une fiche commerciale professionnelle pour ce bien.
 
+EXPLOITATION DU DPE (si fourni) :
+- Si un DPE (PDF ou image) est joint à la requête, EXTRAIS-EN les valeurs réelles et utilise-les TELLES QUELLES dans la fiche, sans estimation :
+  * Surface loi Carrez / loi Boutin (avec mention de la loi appliquée)
+  * Surface habitable précise
+  * Classe énergie (A à G) + consommation kWh/m²/an
+  * Classe GES (A à G) + émissions kgCO2/m²/an
+  * Type d'énergie principale (gaz, fioul, électrique, pompe à chaleur…)
+  * Année de construction si indiquée
+  * Date de réalisation du DPE et durée de validité restante
+- En l'absence de DPE fourni, et seulement dans ce cas, donne une estimation prudente clairement marquée "(estimé)".
+- Mentionne explicitement les surfaces du DPE dans la fiche : elles sont opposables et rassurent l'acheteur.
+
 # 📋 Fiche commerciale
 
 ## Présentation du bien
 [Texte accrocheur 3-4 lignes]
 
 ## Caractéristiques techniques
-- Surface : [m²]
+- Surface habitable : [m² — depuis DPE si fourni]
+- Surface loi Carrez / Boutin : [m² — depuis DPE si fourni, préciser quelle loi]
 - État général : [évaluation]
-- DPE estimé : [classe]
-- Année construction : [estimation]
+- DPE énergie : [classe + conso kWh/m²/an si DPE fourni, sinon "(estimé) classe X"]
+- DPE GES : [classe + émissions kgCO2/m²/an si DPE fourni, sinon "(estimé) classe X"]
+- Type d'énergie : [si DPE fourni]
+- Année construction : [estimation ou réelle si DPE]
 
 ## Atouts à mettre en avant 💎
 [5-6 points commerciaux forts]
@@ -839,23 +854,33 @@ app.get('/api/health', async (req, res) => {
 // ROUTES ANALYSE IA (avec helper Claude)
 // ============================================================
 
-async function analyzeWithClaude(prompt, photos, additionalContext = '') {
+// Convertit un fichier multer en bloc content Claude (image ou document PDF)
+function fileToContent(file) {
+  if (file.mimetype === 'application/pdf') {
+    return {
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: file.buffer.toString('base64') }
+    };
+  }
+  return {
+    type: 'image',
+    source: { type: 'base64', media_type: file.mimetype, data: file.buffer.toString('base64') }
+  };
+}
+
+async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = []) {
   const content = [];
   if (additionalContext) content.push({ type: 'text', text: additionalContext });
-  for (const photo of photos) {
-    content.push({
-      type: 'image',
-      source: { type: 'base64', media_type: photo.mimetype, data: photo.buffer.toString('base64') }
-    });
-  }
+  for (const doc of extraDocs) content.push(fileToContent(doc));
+  for (const photo of photos) content.push(fileToContent(photo));
   content.push({ type: 'text', text: prompt });
-  
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     messages: [{ role: 'user', content }]
   });
-  
+
   return message.content[0].text;
 }
 
@@ -941,13 +966,18 @@ app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res)
   }
 });
 
-app.post('/api/analyze/agent', upload.array('photos', 30), async (req, res) => {
+app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions } = req.body;
-    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n` + precisionsBlock(precisions);
-    const analysis = await analyzeWithClaude(PROMPTS.agent, req.files, context);
-    res.json({ success: true, analysis, agence_nom, agent_nom });
+    const photos = (req.files && req.files.photos) || [];
+    const dpeFiles = (req.files && req.files.dpe) || [];
+    if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    const dpeNote = dpeFiles.length > 0
+      ? `\nUn DPE du bien est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — pas d'estimation.\n`
+      : '';
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}\n` + precisionsBlock(precisions);
+    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles);
+    res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0 });
   } catch (error) {
     console.error('Erreur agent:', error);
     res.status(500).json({ error: error.message });
