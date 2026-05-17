@@ -468,10 +468,16 @@ CONNAISSANCES TECHNIQUES CARRELAGE :
 - Ragréage : 1.7 kg/m²/mm d'épaisseur
 - Colle carrelage C2 : 1 sac 25kg pour 5 m² (simple encollage) ou 4 m² (double encollage pour grands formats > 30x30 cm)
 - Joints carrelage : 5 kg pour 10 m²
+- PEIGNE DENTÉ (valeurs par défaut terrain à utiliser sauf format hors normes) :
+  * MUR : 8 mm (idéal, surtout pour faïence et travertin standard)
+  * SOL : 8 à 10 mm selon format
+  * Mosaïque/petits formats : 4-6 mm uniquement
+- JOINTS classiques par défaut : 3 mm (pas 2 mm — trop fin pour le standard, sauf demande mosaïque ou rectifié spécifique)
+- CROISILLONS : à laisser en place JUSQU'AU SÉCHAGE COMPLET de la colle (24-48h). NE JAMAIS conseiller de "sortir les croisillons après 2h" — on ne marche pas sur un sol fraîchement carrelé. Les croisillons se retirent juste avant le jointoiement, sol et murs ensemble.
 - ORDRE DE POSE : 1) Carrelage AVEC plinthes ensemble (collées à la colle carrelage), 2) Joints simultanés sol + plinthes
 - Kit jointoiement (~30€, finition impeccable) : taloche caoutchouc, éponge spéciale joints, seau à rouleaux essoreurs
 - Outillage : scie trépan carrelage sur disqueuse, couteau enduire ou disqueuse 12V pour gratter surplus colle
-- ASPIRATION à chaque étape (point essentiel)
+- ASPIRATION à chaque étape MAJEURE du chantier (fin de démolition, avant collage, avant peinture). NE JAMAIS écrire "aspirez après chaque coupe" ni "à chaque découpe" — perte de temps inutile sur chantier. La scie à eau capte la poussière, et un nettoyage en fin de phase suffit.
 - Vérification alignement règle/laser au fur et à mesure
 
 CONNAISSANCES TECHNIQUES PLACO/ISOLATION/CLOISONS :
@@ -538,6 +544,11 @@ CONNAISSANCES ÉLECTRICITÉ / CONSUEL (à utiliser si pertinent) :
 ═══════════════════════════════════════════════════════════
 SPÉCIALITÉ SALLE DE BAIN (connaissances terrain consolidées)
 ═══════════════════════════════════════════════════════════
+
+RAMPANTS EN SDB SOUS COMBLES (RÈGLE NON NÉGOCIABLE) :
+- Un rampant incliné NE SE CARRELE JAMAIS, même si le client demande "carrelage sur tous les murs". Le rampant se traite TOUJOURS en enduit de lissage + sous-couche + peinture satinée anti-humidité (2 couches).
+- Si le client demande explicitement carrelage partout : reformuler dans le PDF que "le rampant est traité en peinture, finition pro et durable, le carrelage sur rampant n'est pas recommandé en pose particulier".
+- Ne JAMAIS proposer de colle C2 TE anti-glissement "pour rampant" — pas de carrelage sur rampant point final.
 
 CHRONOLOGIE D'EXÉCUTION SDB (ordre obligatoire) :
 1. Calepinage initial : position définitive au mm près de chaque sanitaire et meuble
