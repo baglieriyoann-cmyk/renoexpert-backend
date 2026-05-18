@@ -457,7 +457,7 @@ function renderContent(doc, text) {
     
     // Tableaux markdown
     if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      const cells = trimmed.split('|').filter(c => c.trim() !== '').map(c => c.trim());
+      const cells = trimmed.slice(1, -1).split('|').map(c => c.trim());
       if (trimmed.match(/^\|[\s\-:|]+\|$/)) continue;
       
       if (!inTable) {
@@ -688,53 +688,49 @@ function drawCanvaHeader(doc, options) {
 // ============================================================
 
 function generateVisitePDF(data, res) {
-  const { analysis, location, surface } = data;
+  const { analysis, location, surface, visite_type, loyer_vise, prix_achat } = data;
+  const isLocatif = visite_type === 'locatif';
   const cleaned = simplifyTerms(analysis);
-  
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Diagnostic Visite - RénoExpert' }});
+
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: isLocatif ? 'Investissement Locatif - RénoExpert' : 'Diagnostic Visite - RénoExpert' }});
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="visite-renoexpert.pdf"');
+  res.setHeader('Content-Disposition', `attachment; filename="${isLocatif ? 'investissement-locatif' : 'visite'}-renoexpert.pdf"`);
   doc.pipe(res);
-  
+
   fillBackground(doc);
-  
-  // En-tête style Canva
+
   drawCanvaHeader(doc, {
-    titleMain: 'Diagnostic',
-    titleSub: 'Rapport d\'analyse de bien immobilier'
+    titleMain: isLocatif ? 'Investissement Locatif' : 'Diagnostic Visite',
+    titleSub: isLocatif ? 'Analyse de rentabilite et conformite DPE' : 'Rapport d\'analyse de bien immobilier'
   });
-  
-  // Tableau d'en-tête coloré 4 colonnes (style Canva)
-  drawCanvaHeaderTable(doc, [
-    {
-      title: 'Type d\'analyse',
-      headerColor: COLORS.mintGreen,
-      content: 'Diagnostic complet pour visite avant achat'
-    },
-    {
-      title: 'Localisation',
-      headerColor: COLORS.creamYellow,
-      content: location || 'Non précisée'
-    },
-    {
-      title: 'Surface',
-      headerColor: COLORS.coralRed,
-      content: surface ? `${surface} m²` : 'Non précisée'
-    },
-    {
-      title: 'Date',
-      headerColor: COLORS.powderPink,
-      content: new Date().toLocaleDateString('fr-FR')
-    }
-  ]);
-  
-  // Présentation
-  drawColoredCard(doc, {
-    title: 'A propos de ce rapport',
-    content: 'Ce diagnostic a été réalisé à partir des photos et données fournies. Il vous aide à identifier les points forts et les vigilances avant votre visite ou décision d\'achat.',
-    bgColor: COLORS.mintGreenBg,
-    textColor: COLORS.mintGreenDark
-  });
+
+  if (isLocatif) {
+    drawCanvaHeaderTable(doc, [
+      { title: 'Type', headerColor: COLORS.mintGreen, content: 'Investissement locatif' },
+      { title: 'Localisation', headerColor: COLORS.creamYellow, content: location || 'Non precisee' },
+      { title: 'Surface', headerColor: COLORS.coralRed, content: surface ? `${surface} m2` : 'Non precisee' },
+      { title: 'Date', headerColor: COLORS.powderPink, content: new Date().toLocaleDateString('fr-FR') }
+    ]);
+    drawColoredCard(doc, {
+      title: 'A propos de ce rapport',
+      content: 'Cette analyse a ete realisee pour un projet d\'investissement locatif. Elle integre l\'evaluation energetique du bien (DPE), les travaux minimaux pour respecter la loi Climat & Resilience (interdiction de louer F/G), et la rentabilite locative previsionnelle.',
+      bgColor: COLORS.mintGreenBg,
+      textColor: COLORS.mintGreenDark
+    });
+  } else {
+    drawCanvaHeaderTable(doc, [
+      { title: 'Type d\'analyse', headerColor: COLORS.mintGreen, content: 'Diagnostic complet pour visite avant achat' },
+      { title: 'Localisation', headerColor: COLORS.creamYellow, content: location || 'Non precisee' },
+      { title: 'Surface', headerColor: COLORS.coralRed, content: surface ? `${surface} m2` : 'Non precisee' },
+      { title: 'Date', headerColor: COLORS.powderPink, content: new Date().toLocaleDateString('fr-FR') }
+    ]);
+    drawColoredCard(doc, {
+      title: 'A propos de ce rapport',
+      content: 'Ce diagnostic a ete realise a partir des photos et donnees fournies. Il vous aide a identifier les points forts et les vigilances avant votre visite ou decision d\'achat.',
+      bgColor: COLORS.mintGreenBg,
+      textColor: COLORS.mintGreenDark
+    });
+  }
   
   // Contenu
   renderContent(doc, cleaned);
