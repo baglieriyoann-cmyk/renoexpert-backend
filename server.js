@@ -425,14 +425,20 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // ============================================================
 
 const PROMPTS = {
-  visite: `Tu es un expert immobilier français senior. Analyse les photos d'un bien immobilier pour quelqu'un qui le visite avant achat.
+  visite: `Tu es un expert immobilier français senior. Analyse les photos d'un bien immobilier pour un acheteur (résidence principale ou secondaire).
 
-Donne une analyse structurée et précise :
+Si un DPE est joint à la requête, lis-le et intègre SES VALEURS RÉELLES (classe, kWh/m²/an, GES, surface Carrez/Boutin) dans le diagnostic. Sinon, estime la classe probable à partir des photos (matériaux, systèmes de chauffage visibles, année apparente).
 
-# 🏠 Diagnostic visuel
+# 🏠 Diagnostic Visite Immobilière
 
 ## État général
-[Évaluation globale du bien]
+[Évaluation globale — âge, standing, entretien]
+
+## Performance énergétique (DPE)
+- Classe estimée / lue : [A/B/C/D/E/F/G]
+- Consommation : [X kWh/m²/an si connue, sinon estimation]
+- GES : [X kgCO2/m²/an si connu]
+- Impact sur la valeur et la revente : [synthèse]
 
 ## Points forts ✅
 - [Liste des qualités observées]
@@ -441,17 +447,113 @@ Donne une analyse structurée et précise :
 - [Défauts, problèmes potentiels]
 
 ## Travaux à prévoir 🔨
-- [Travaux urgents]
-- [Travaux à moyen terme]
-- Estimation budget : XX 000 € à XX 000 €
+
+### Urgents (sécurité / étanchéité)
+- [Travail — estimation coût]
+
+### Confort et mise aux normes
+- [Travail — estimation coût]
+
+### Amélioration énergétique
+- [Travail pour améliorer le DPE si classe E, F ou G — estimation coût]
+
+**Budget travaux total estimé : XX 000 € à XX 000 €**
 
 ## Questions à poser au vendeur ❓
-- [Liste de 5-8 questions importantes]
+- [Liste de 5-8 questions ciblées]
 
 ## Verdict 🎯
-[Recommandation : acheter, négocier, fuir]
+[Acheter / Négocier (préciser le levier) / Passer son chemin — justification factuelle]
 
-Sois précis, factuel, professionnel.`,
+Sois précis, chiffré, professionnel. Donne des prix 2025-2026.`,
+
+  visite_locatif: `Tu es un expert en investissement locatif immobilier français. Analyse ce bien pour un acheteur-investisseur qui souhaite le mettre en location.
+
+CONTEXTE RÉGLEMENTAIRE OBLIGATOIRE À INTÉGRER :
+- Depuis le 1er janv. 2023 : interdiction de signer un nouveau bail pour tout logement classé G (>420 kWh/m²/an EF, seuil décence >450 kWh/m²/an)
+- Depuis le 1er janv. 2025 : interdiction de signer un nouveau bail pour tout logement classé F
+- À partir du 1er janv. 2028 : interdiction pour les logements classés E
+- Pour louer durablement et sans risque légal : le bien DOIT atteindre au moins la classe D (idéalement C)
+
+Si un DPE est joint, utilise SES VALEURS RÉELLES. Sinon, estime la classe probable d'après les photos et l'année de construction visible.
+
+STRUCTURE OBLIGATOIRE :
+
+# 📈 Fiche Investissement Locatif
+
+## État du bien et DPE
+
+### Performance énergétique
+- Classe DPE : [lettre] — source : [DPE fourni / estimée]
+- Consommation : [X kWh/m²/an EF + Ep si dispo]
+- Statut légal : [Louable immédiatement / Interdit à la location depuis 01/2025 / Interdit depuis 01/2023]
+- Horizon de travaux obligatoires : [pour atteindre classe D ou E avant interdiction]
+
+### État général
+[Description objective des pièces, des équipements, des matériaux]
+
+## Travaux pour louer légalement et optimiser le rendement
+
+### Travaux obligatoires (mise en conformité DPE — pour atteindre classe D ou E)
+Liste uniquement les travaux réalistes et suffisants pour atteindre le palier légal :
+- [Travail 1 — coût estimé]
+- [Travail 2 — coût estimé]
+- **Total conformité DPE : XX 000 € — classe visée : [lettre]**
+
+### Travaux recommandés (attractivité locative + rendement)
+- [Cuisine/SDB fonctionnelle, peinture, électricité, etc. — coût]
+- **Total recommandés : XX 000 €**
+
+### Budget travaux total : XX 000 € à XX 000 €
+
+## Analyse de rentabilité
+
+### Récapitulatif financier
+| Poste | Montant |
+|---|---|
+| Prix d'acquisition | XX € |
+| Frais notaire (7-8% ancien) | XX € |
+| Travaux estimés | XX € |
+| **INVESTISSEMENT TOTAL** | **XX €** |
+
+### Loyer de marché estimé
+- Loyer mensuel HC estimé (zone) : XX € à XX €/mois
+- (si loyer visé fourni par l'utilisateur, commenter sa cohérence avec le marché)
+
+### Rendements
+- **Rendement brut** = (loyer annuel HC / investissement total) × 100 = **XX%**
+- Charges propriétaire non récupérables estimées : XX €/an
+  - Taxe foncière estimée : XX €/an
+  - Assurance PNO : 200-400 €/an
+  - Entretien courant : ~1% du bien/an
+  - Vacance locative (1 mois) : XX €/an
+  - Gestion agence (7-8% si applicable) : XX €/an
+- **Rendement net estimé : XX%**
+
+### Régime fiscal recommandé
+Régime demandé : [régime fourni par l'utilisateur]
+- [Explication de l'impact fiscal sur le rendement net]
+- [Indiquer si un autre régime serait plus avantageux et pourquoi — ex: LMNP réel si travaux importants]
+
+### Cash-flow mensuel estimé
+| Flux | Montant |
+|---|---|
+| Loyer HC mensuel | +XX € |
+| Mensualité crédit (3,5% sur 20 ans — 100% financé) | -XX € |
+| Charges mensualisées propriétaire | -XX € |
+| **Cash-flow net mensuel** | **XX €** |
+
+## Risques et points d'attention
+- [Risques techniques : vétusté, humidité, toiture, etc.]
+- [Risques réglementaires : zone tendue ? encadrement des loyers ? co-propriété ?]
+- [Risques locatifs : profil de locataires, vacance estimée]
+
+## Verdict investissement 🎯
+🟢 BON INVESTISSEMENT / 🟡 INVESTISSEMENT POSSIBLE AVEC TRAVAUX / 🔴 RENTABILITÉ INSUFFISANTE
+
+[Justification en 3-5 lignes + recommandation concrète : acheter / négocier à XX% / passer]
+
+Sois factuel, chiffré, professionnel. Base-toi sur les données fournies ET les photos. Prix 2025-2026.`,
 
   reparation: `Tu es un expert bâtiment français senior avec 20 ans d'expérience terrain. Diagnostique le problème montré sur les photos et donne une procédure de réparation claire pour un particulier.
 
@@ -929,11 +1031,28 @@ function fileToContent(file) {
   };
 }
 
-async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = []) {
+async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = []) {
   const content = [];
   if (additionalContext) content.push({ type: 'text', text: additionalContext });
   for (const doc of extraDocs) content.push(fileToContent(doc));
-  for (const photo of photos) content.push(fileToContent(photo));
+
+  const hasAnyComment = Array.isArray(photoComments) && photoComments.some(c => c && c.trim());
+  if (hasAnyComment) {
+    content.push({
+      type: 'text',
+      text: "Chaque photo ci-dessous est précédée d'un libellé « Photo N ». Quand l'utilisateur a ajouté une annotation pour une photo, elle apparaît juste avant l'image (« Annotation utilisateur »). Ces annotations expriment l'intention/le projet pour la zone visible (ex : « agrandir cette chambre en deux ») — tu DOIS en tenir compte explicitement dans l'analyse de cette photo, chiffrer si c'est un projet de travaux, et le restituer dans le rapport."
+    });
+  }
+
+  photos.forEach((photo, i) => {
+    const c = (photoComments && photoComments[i] ? String(photoComments[i]).trim() : '');
+    const label = c
+      ? `Photo ${i + 1} — Annotation utilisateur : « ${c} »`
+      : `Photo ${i + 1}`;
+    content.push({ type: 'text', text: label });
+    content.push(fileToContent(photo));
+  });
+
   content.push({ type: 'text', text: prompt });
 
   const message = await anthropic.messages.create({
@@ -943,6 +1062,17 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
   });
 
   return message.content[0].text;
+}
+
+// Parse le champ comments (JSON array de strings) envoyé en multipart par le front
+function parsePhotoComments(raw) {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map(c => (c == null ? '' : String(c))) : [];
+  } catch (e) {
+    return [];
+  }
 }
 
 // Helper : bloc de précisions utilisateur à injecter dans le contexte si fourni
@@ -991,12 +1121,26 @@ ${systemPrompt}`;
   return message.content[0].text;
 }
 
-app.post('/api/analyze/visite', upload.array('photos', 20), async (req, res) => {
+app.post('/api/analyze/visite', upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, precisions } = req.body;
-    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n` + precisionsBlock(precisions);
-    const analysis = await analyzeWithClaude(PROMPTS.visite, req.files, context);
+    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal } = req.body;
+    const photos = (req.files && req.files.photos) || [];
+    const dpeFiles = (req.files && req.files.dpe) || [];
+    if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    const isLocatif = visite_type === 'locatif';
+    const dpeNote = dpeFiles.length > 0
+      ? `\nUn DPE du bien est joint (document avant les photos). Utilise SES VALEURS RÉELLES.\n`
+      : `\nAucun DPE fourni — estime la classe probable à partir des photos et de l'année de construction visible.\n`;
+    let context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n${dpeNote}`;
+    if (isLocatif) {
+      context += prix_achat ? `Prix d'achat envisagé : ${prix_achat} €\n` : '';
+      context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
+      context += regime_fiscal ? `Régime fiscal envisagé : ${regime_fiscal}\n` : '';
+    }
+    context += '\n' + precisionsBlock(precisions);
+    const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await analyzeWithClaude(prompt, photos, context, dpeFiles, photoComments);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur visite:', error);
@@ -1019,7 +1163,8 @@ app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res)
     const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
-    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context);
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur reparation:', error);
@@ -1040,7 +1185,8 @@ app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, 
       ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
       : '';
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}\n` + precisionsBlock(precisions);
-    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles);
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles, photoComments);
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0 });
   } catch (error) {
     console.error('Erreur agent:', error);
@@ -1048,10 +1194,15 @@ app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, 
   }
 });
 
-app.post('/api/analyze/marchand', upload.array('photos', 50), async (req, res) => {
+app.post('/api/analyze/marchand', upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions } = req.body;
-    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    const photos = (req.files && req.files.photos) || [];
+    const dpeFiles = (req.files && req.files.dpe) || [];
+    if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    const dpeNote = dpeFiles.length > 0
+      ? `\nDPE joint — utilise SES VALEURS RÉELLES (classe, kWh/m²/an, GES) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB.\n`
+      : `\nAucun DPE fourni — estime la classe probable d'après les photos et l'année de construction.\n`;
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
 Surface : ${surface} m²
@@ -1059,11 +1210,12 @@ Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
 Stratégie : ${strategie}
 Nombre de lots envisagés : ${nb_lots}
-
+${dpeNote}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 
 ` + precisionsBlock(precisions);
-    const analysis = await analyzeWithClaude(PROMPTS.marchand, req.files, context);
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, dpeFiles, photoComments);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
@@ -1327,9 +1479,9 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 
 app.post('/api/pdf/visite', async (req, res) => {
   try {
-    const { analysis, location, surface } = req.body;
+    const { analysis, location, surface, visite_type, loyer_vise, prix_achat } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    pdfGen.generateVisitePDF({ analysis, location, surface }, res);
+    pdfGen.generateVisitePDF({ analysis, location, surface, visite_type, loyer_vise, prix_achat }, res);
   } catch (error) {
     console.error('Erreur PDF visite:', error);
     res.status(500).json({ error: error.message });
