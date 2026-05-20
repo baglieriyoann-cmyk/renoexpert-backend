@@ -6,6 +6,32 @@
 // ============================================================
 
 const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
+
+// ============================================================
+// LOGO (en-tête PDF)
+// ============================================================
+// Le logo horizontal marine/or est cherché dans le même dossier que ce fichier.
+// Si absent, drawCanvaHeader() retombe automatiquement sur l'ancien rendu
+// (bandeau marine + libellé doré lettré) sans casser le PDF.
+const LOGO_CANDIDATES = [
+  'renoexpert-horizontal-800x213.png',
+  'renoexpert-horizontal-1600x426.png',
+  'renoexpert-horizontal-400x106.png'
+];
+const LOGO_PATH = (() => {
+  for (const name of LOGO_CANDIDATES) {
+    const p = path.join(__dirname, name);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+})();
+if (LOGO_PATH) {
+  console.log('[pdfGenerator] Logo header trouvé :', path.basename(LOGO_PATH));
+} else {
+  console.log('[pdfGenerator] Aucun logo header trouvé — fallback bandeau marine');
+}
 
 // ============================================================
 // PALETTE LUXE
@@ -649,19 +675,51 @@ function drawCanvaHeader(doc, options) {
   doc.moveTo(0, 14).lineTo(LAYOUT.pageWidth, 14)
      .lineWidth(0.8).strokeColor(COLORS.gold).stroke();
 
-  // Petit libellé en haut centré : suffixe luxe
-  doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
-     .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
-       LAYOUT.margin, 35, {
-         width: LAYOUT.contentWidth,
-         align: 'center',
-         characterSpacing: 1.2,
-         lineBreak: false
-       });
+  // --- LOGO (si disponible) ou fallback libellé doré ---
+  // Le logo horizontal a un ratio ~3.75:1 (800x213). On le centre horizontalement,
+  // largeur ~55% de la page, sous le bandeau supérieur avec un peu d'air.
+  let titleY = 60; // valeur par défaut (sans logo, comme l'ancien rendu)
+
+  if (LOGO_PATH) {
+    try {
+      const logoWidth = 200; // largeur d'affichage en points PDF
+      const logoHeight = logoWidth * (213 / 800); // ~53.25 pt
+      const logoX = (LAYOUT.pageWidth - logoWidth) / 2;
+      const logoY = 22; // sous le bandeau marine, avec marge
+
+      doc.image(LOGO_PATH, logoX, logoY, { width: logoWidth });
+
+      // Le titre principal vient juste sous le logo
+      titleY = logoY + logoHeight + 14;
+    } catch (e) {
+      console.error('[pdfGenerator] Erreur lecture logo, fallback libellé :', e.message);
+      // Fallback : libellé doré lettré (rendu historique)
+      doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
+         .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
+           LAYOUT.margin, 35, {
+             width: LAYOUT.contentWidth,
+             align: 'center',
+             characterSpacing: 1.2,
+             lineBreak: false
+           });
+      titleY = 60;
+    }
+  } else {
+    // Pas de logo : on conserve l'ancien libellé doré lettré
+    doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
+       .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
+         LAYOUT.margin, 35, {
+           width: LAYOUT.contentWidth,
+           align: 'center',
+           characterSpacing: 1.2,
+           lineBreak: false
+         });
+    titleY = 60;
+  }
 
   // Grand titre marine en haut, classique haut de gamme
   doc.fillColor(COLORS.navy).fontSize(36).font('Helvetica-Bold')
-     .text(titleMain, LAYOUT.margin, 60, {
+     .text(titleMain, LAYOUT.margin, titleY, {
        width: LAYOUT.contentWidth,
        align: 'center',
        characterSpacing: 2,
