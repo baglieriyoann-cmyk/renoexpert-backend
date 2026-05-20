@@ -4,7 +4,8 @@
 // 
 // Nouvelles fonctionnalités :
 // - Inscription / Connexion email + mot de passe
-// - Limite 3 projets gratuits (sauf compte admin = illimité)
+// - Quota 5 ANALYSES gratuites (sauf compte admin = illimité)
+// - Sauvegardes de projets ILLIMITÉES (pas de coût Anthropic)
 // - Notifications email via Brevo
 // ============================================================
 
@@ -47,7 +48,7 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
-const LIMITE_PROJETS_GRATUIT = 3;
+const LIMITE_ANALYSES_GRATUIT = 5;
 
 // ============================================================
 // CONNEXION POSTGRESQL
@@ -133,6 +134,19 @@ async function initDB() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_projets_user ON projets(user_id, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_token)`);
+
+    // Ajouter colonne nb_analyses à users si pas déjà (compteur d'analyses IA lancées)
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='users' AND column_name='nb_analyses'
+        ) THEN
+          ALTER TABLE users ADD COLUMN nb_analyses INTEGER DEFAULT 0;
+        END IF;
+      END $$;
+    `);
     
     console.log('✅ Base de données initialisée');
   } catch (err) {
@@ -237,7 +251,7 @@ async function requireAuth(req, res, next) {
   
   try {
     const result = await pool.query(
-      'SELECT id, email, nom, plan FROM users WHERE session_token = $1 AND session_expires > NOW()',
+      'SELECT id, email, nom, plan, nb_analyses FROM users WHERE session_token = $1 AND session_expires > NOW()',
       [token]
     );
     
@@ -250,6 +264,44 @@ async function requireAuth(req, res, next) {
   } catch (err) {
     console.error('Erreur auth:', err);
     res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
+// ============================================================
+// QUOTA ANALYSES — Helpers
+// ============================================================
+// Vérifie le quota d'analyses AVANT l'appel à l'IA (à utiliser comme middleware).
+// Bloque l'utilisateur gratuit s'il a déjà atteint 5 analyses.
+// L'admin ('illimite') passe toujours.
+async function checkAnalysesQuota(req, res, next) {
+  if (req.user.plan === 'illimite') {
+    return next();
+  }
+  const nbAnalyses = parseInt(req.user.nb_analyses || 0);
+  if (nbAnalyses >= LIMITE_ANALYSES_GRATUIT) {
+    return res.status(403).json({
+      error: `Limite atteinte : ${LIMITE_ANALYSES_GRATUIT} analyses IA gratuites utilisées. Contactez-nous pour passer en Pro.`,
+      code: 'ANALYSES_QUOTA_EXCEEDED',
+      quota: {
+        utilises: nbAnalyses,
+        limite: LIMITE_ANALYSES_GRATUIT,
+        illimite: false
+      }
+    });
+  }
+  next();
+}
+
+// Incrémente le compteur d'analyses APRÈS un appel IA réussi.
+// Ne bloque jamais : si l'incrément échoue, on logue et on continue (l'analyse a déjà été facturée à toi côté Anthropic).
+async function incrementAnalysesCounter(userId) {
+  try {
+    await pool.query(
+      'UPDATE users SET nb_analyses = COALESCE(nb_analyses, 0) + 1 WHERE id = $1',
+      [userId]
+    );
+  } catch (err) {
+    console.error('⚠️ Erreur incrément nb_analyses pour user', userId, ':', err.message);
   }
 }
 
@@ -400,22 +452,25 @@ app.post('/api/auth/logout', requireAuth, async (req, res) => {
 
 // VÉRIFIER LA SESSION
 app.get('/api/auth/me', requireAuth, async (req, res) => {
-  // Calculer combien de projets l'utilisateur a déjà
+  // Compter aussi les projets (pour info, plus pour quota)
   const countResult = await pool.query(
     'SELECT COUNT(*) FROM projets WHERE user_email = $1',
     [req.user.email]
   );
   
   const nbProjets = parseInt(countResult.rows[0].count);
-  const limite = req.user.plan === 'illimite' ? null : LIMITE_PROJETS_GRATUIT;
+  const nbAnalyses = parseInt(req.user.nb_analyses || 0);
+  const limite = req.user.plan === 'illimite' ? null : LIMITE_ANALYSES_GRATUIT;
   
   res.json({
     success: true,
     user: req.user,
     quota: {
-      utilises: nbProjets,
+      utilises: nbAnalyses,
       limite: limite,
-      illimite: req.user.plan === 'illimite'
+      illimite: req.user.plan === 'illimite',
+      type: 'analyses',
+      nb_projets: nbProjets
     }
   });
 });
@@ -1121,7 +1176,7 @@ ${systemPrompt}`;
   return message.content[0].text;
 }
 
-app.post('/api/analyze/visite', upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/visite', requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -1141,6 +1196,7 @@ app.post('/api/analyze/visite', upload.fields([{ name: 'photos', maxCount: 20 },
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(prompt, photos, context, dpeFiles, photoComments);
+    await incrementAnalysesCounter(req.user.id);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur visite:', error);
@@ -1158,13 +1214,14 @@ app.post('/api/analyze/visite', upload.fields([{ name: 'photos', maxCount: 20 },
   }
 });
 
-app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res) => {
+app.post('/api/analyze/reparation', requireAuth, checkAnalysesQuota, upload.array('photos', 10), async (req, res) => {
   try {
     const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
+    await incrementAnalysesCounter(req.user.id);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur reparation:', error);
@@ -1172,7 +1229,7 @@ app.post('/api/analyze/reparation', upload.array('photos', 10), async (req, res)
   }
 });
 
-app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -1187,6 +1244,7 @@ app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, 
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles, photoComments);
+    await incrementAnalysesCounter(req.user.id);
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0 });
   } catch (error) {
     console.error('Erreur agent:', error);
@@ -1194,7 +1252,7 @@ app.post('/api/analyze/agent', upload.fields([{ name: 'photos', maxCount: 30 }, 
   }
 });
 
-app.post('/api/analyze/marchand', upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -1216,6 +1274,7 @@ IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, dpeFiles, photoComments);
+    await incrementAnalysesCounter(req.user.id);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
@@ -1228,12 +1287,13 @@ IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 // ROUTES D'AFFINEMENT (sans photos, sur la base d'une analyse précédente)
 // ============================================================
 
-app.post('/api/refine/visite', async (req, res) => {
+app.post('/api/refine/visite', requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
     const analysis = await refineWithClaude(PROMPTS.visite, previousAnalysis, instructions, context);
+    await incrementAnalysesCounter(req.user.id);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine visite:', error);
@@ -1241,12 +1301,13 @@ app.post('/api/refine/visite', async (req, res) => {
   }
 });
 
-app.post('/api/refine/reparation', async (req, res) => {
+app.post('/api/refine/reparation', requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
     const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context);
+    await incrementAnalysesCounter(req.user.id);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine reparation:', error);
@@ -1254,12 +1315,13 @@ app.post('/api/refine/reparation', async (req, res) => {
   }
 });
 
-app.post('/api/refine/agent', async (req, res) => {
+app.post('/api/refine/agent', requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
     const analysis = await refineWithClaude(PROMPTS.agent, previousAnalysis, instructions, context);
+    await incrementAnalysesCounter(req.user.id);
     res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
     console.error('Erreur refine agent:', error);
@@ -1267,7 +1329,7 @@ app.post('/api/refine/agent', async (req, res) => {
   }
 });
 
-app.post('/api/refine/marchand', async (req, res) => {
+app.post('/api/refine/marchand', requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -1281,6 +1343,7 @@ Nombre de lots envisagés : ${nb_lots}
 
 `;
     const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context);
+    await incrementAnalysesCounter(req.user.id);
     const frais_notaire_mb_3pct = prix_demande ? Math.round(parseFloat(prix_demande) * 0.03) : null;
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
@@ -1342,22 +1405,8 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Données manquantes' });
     }
     
-    // Vérifier le quota (sauf si plan illimité)
-    if (req.user.plan !== 'illimite') {
-      const countResult = await pool.query(
-        'SELECT COUNT(*) FROM projets WHERE user_email = $1',
-        [req.user.email]
-      );
-      const nbProjets = parseInt(countResult.rows[0].count);
-      
-      if (nbProjets >= LIMITE_PROJETS_GRATUIT) {
-        return res.status(403).json({ 
-          error: `Limite atteinte : ${LIMITE_PROJETS_GRATUIT} projets maximum en gratuit. Passez en Pro pour sauvegarder plus de projets.`,
-          code: 'QUOTA_EXCEEDED',
-          quota: { utilises: nbProjets, limite: LIMITE_PROJETS_GRATUIT }
-        });
-      }
-    }
+    // ✅ Sauvegardes ILLIMITÉES pour tout le monde (aucun coût Anthropic, seulement du stockage)
+    // Le quota s'applique uniquement aux analyses IA, pas aux sauvegardes.
     
     const result = await pool.query(
       `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data) 
@@ -1375,9 +1424,10 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
       projet_id: result.rows[0].id,
       total_projets: parseInt(countResult.rows[0].count),
       quota: {
-        utilises: parseInt(countResult.rows[0].count),
-        limite: req.user.plan === 'illimite' ? null : LIMITE_PROJETS_GRATUIT,
-        illimite: req.user.plan === 'illimite'
+        utilises: parseInt(req.user.nb_analyses || 0),
+        limite: req.user.plan === 'illimite' ? null : LIMITE_ANALYSES_GRATUIT,
+        illimite: req.user.plan === 'illimite',
+        type: 'analyses'
       }
     });
   } catch (error) {
@@ -1412,9 +1462,11 @@ app.get('/api/projets/list', requireAuth, async (req, res) => {
       total: liste.length,
       projets: liste,
       quota: {
-        utilises: liste.length,
-        limite: req.user.plan === 'illimite' ? null : LIMITE_PROJETS_GRATUIT,
-        illimite: req.user.plan === 'illimite'
+        utilises: parseInt(req.user.nb_analyses || 0),
+        limite: req.user.plan === 'illimite' ? null : LIMITE_ANALYSES_GRATUIT,
+        illimite: req.user.plan === 'illimite',
+        type: 'analyses',
+        nb_projets: liste.length
       }
     });
   } catch (error) {
@@ -1477,7 +1529,7 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 // PDF ROUTES (avec design pro v3.4)
 // ============================================================
 
-app.post('/api/pdf/visite', async (req, res) => {
+app.post('/api/pdf/visite', requireAuth, async (req, res) => {
   try {
     const { analysis, location, surface, visite_type, loyer_vise, prix_achat } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1488,7 +1540,7 @@ app.post('/api/pdf/visite', async (req, res) => {
   }
 });
 
-app.post('/api/pdf/reparation', async (req, res) => {
+app.post('/api/pdf/reparation', requireAuth, async (req, res) => {
   try {
     const { analysis, description } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1499,7 +1551,7 @@ app.post('/api/pdf/reparation', async (req, res) => {
   }
 });
 
-app.post('/api/pdf/agent', async (req, res) => {
+app.post('/api/pdf/agent', requireAuth, async (req, res) => {
   try {
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1510,7 +1562,7 @@ app.post('/api/pdf/agent', async (req, res) => {
   }
 });
 
-app.post('/api/pdf/marchand', async (req, res) => {
+app.post('/api/pdf/marchand', requireAuth, async (req, res) => {
   try {
     const { analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1652,6 +1704,7 @@ app.get('/admin/users', async (req, res) => {
     
     const result = await pool.query(`
       SELECT u.id, u.email, u.nom, u.plan, u.created_at, u.last_login,
+        COALESCE(u.nb_analyses, 0) AS nb_analyses,
         (SELECT COUNT(*) FROM projets WHERE user_email = u.email) AS nb_projets
       FROM users u
       ORDER BY u.created_at DESC
@@ -1676,6 +1729,9 @@ app.get('/admin/users', async (req, res) => {
         .plan{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600}
         .plan.gratuit{background:#e6f0ff;color:#0052cc}
         .plan.illimite{background:linear-gradient(135deg,#f0e6ff,#ffe6f5);color:#7c3aed}
+        .quota-ok{color:#0aa05a;font-weight:600}
+        .quota-warn{color:#f59e0b;font-weight:600}
+        .quota-max{color:#dc2626;font-weight:700}
         .tabs{display:flex;gap:10px;margin-bottom:20px}
         .tab{padding:10px 20px;background:white;border:1px solid #e8eef7;border-radius:10px;font-weight:600;color:#5e6987;text-decoration:none}
         .tab.active{background:#0066ff;color:white;border-color:#0066ff}
@@ -1689,18 +1745,26 @@ app.get('/admin/users', async (req, res) => {
         <div class="section">
           <h2>Liste des utilisateurs (${result.rows.length})</h2>
           <table>
-            <thead><tr><th>Email</th><th>Nom</th><th>Plan</th><th>Projets</th><th>Inscrit le</th><th>Dernière connexion</th></tr></thead>
+            <thead><tr><th>Email</th><th>Nom</th><th>Plan</th><th>Analyses IA</th><th>Projets sauv.</th><th>Inscrit le</th><th>Dernière connexion</th></tr></thead>
             <tbody>
-              ${result.rows.map(u => `
+              ${result.rows.map(u => {
+                const nbA = parseInt(u.nb_analyses || 0);
+                let analysesClass = 'quota-ok';
+                if (u.plan !== 'illimite') {
+                  if (nbA >= LIMITE_ANALYSES_GRATUIT) analysesClass = 'quota-max';
+                  else if (nbA >= LIMITE_ANALYSES_GRATUIT - 1) analysesClass = 'quota-warn';
+                }
+                return `
                 <tr>
                   <td><strong>${u.email}</strong></td>
                   <td>${u.nom || '-'}</td>
                   <td><span class="plan ${u.plan}">${u.plan}</span></td>
-                  <td><strong>${u.nb_projets}</strong>${u.plan !== 'illimite' ? ` / ${LIMITE_PROJETS_GRATUIT}` : ''}</td>
+                  <td><span class="${analysesClass}">${nbA}${u.plan !== 'illimite' ? ` / ${LIMITE_ANALYSES_GRATUIT}` : ' (illimité)'}</span></td>
+                  <td><strong>${u.nb_projets}</strong></td>
                   <td>${new Date(u.created_at).toLocaleDateString('fr-FR')}</td>
                   <td>${u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais'}</td>
                 </tr>
-              `).join('')}
+              `;}).join('')}
             </tbody>
           </table>
         </div>
