@@ -48,6 +48,7 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://renoexpert.fr').replace(/\/$/, '');
 const LIMITE_ANALYSES_GRATUIT = 5;
 
 // ============================================================
@@ -147,6 +148,19 @@ async function initDB() {
         END IF;
       END $$;
     `);
+
+    // Table password_resets : stocke les tokens de réinitialisation de mot de passe
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token)`);
     
     console.log('✅ Base de données initialisée');
   } catch (err) {
@@ -473,6 +487,191 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       nb_projets: nbProjets
     }
   });
+});
+
+// ============================================================
+// MOT DE PASSE OUBLIÉ — Lien magique par email (valide 1h)
+// ============================================================
+
+// Étape 1 : l'utilisateur saisit son email, on lui envoie un lien magique
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email requis' });
+    }
+    const emailClean = email.toLowerCase().trim();
+
+    // Chercher l'utilisateur
+    const userResult = await pool.query(
+      'SELECT id, email, nom FROM users WHERE email = $1',
+      [emailClean]
+    );
+
+    // SÉCURITÉ : on renvoie TOUJOURS un succès, même si l'email n'existe pas
+    // (sinon un attaquant peut deviner quels emails sont enregistrés).
+    if (userResult.rows.length === 0) {
+      console.log('🔍 Demande reset pour email inconnu :', emailClean);
+      return res.json({
+        success: true,
+        message: 'Si cet email existe dans notre base, vous allez recevoir un lien de réinitialisation.'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    // Invalider les anciens tokens non utilisés de cet utilisateur
+    await pool.query(
+      'UPDATE password_resets SET used = TRUE WHERE user_id = $1 AND used = FALSE',
+      [user.id]
+    );
+
+    // Créer un nouveau token (32 bytes hex, valide 1h)
+    const resetToken = generateToken();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 heure
+
+    await pool.query(
+      'INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, resetToken, expiresAt]
+    );
+
+    // Envoyer l'email avec le lien magique
+    const resetLink = `${FRONTEND_URL}/?reset_token=${encodeURIComponent(resetToken)}`;
+    const htmlContent = `
+      <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background: #f5f7fb;">
+        <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+          <h1 style="color: #0F1F3D; font-size: 22px; margin: 0 0 8px;">🔐 Réinitialisation de votre mot de passe</h1>
+          <p style="color: #5e6987; font-size: 14px; margin: 0 0 24px;">Bonjour ${user.nom || ''},</p>
+          <p style="color: #2c3548; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+            Vous avez demandé à réinitialiser le mot de passe de votre compte RénoExpert.
+            Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe :
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${resetLink}" style="display: inline-block; background: linear-gradient(135deg, #0F1F3D, #1F3358); color: white; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px;">
+              Réinitialiser mon mot de passe
+            </a>
+          </div>
+          <p style="color: #5e6987; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
+            Ou copiez ce lien dans votre navigateur :<br>
+            <a href="${resetLink}" style="color: #C9A961; word-break: break-all;">${resetLink}</a>
+          </p>
+          <hr style="border: none; border-top: 1px solid #e8eef7; margin: 24px 0;">
+          <p style="color: #97a3bd; font-size: 12px; line-height: 1.5; margin: 0;">
+            ⏱️ Ce lien est valide pendant <strong>1 heure</strong>.<br>
+            🛡️ Si vous n'avez pas demandé cette réinitialisation, ignorez simplement cet email — votre mot de passe ne sera pas modifié.
+          </p>
+        </div>
+        <p style="text-align: center; color: #97a3bd; font-size: 12px; margin: 16px 0 0;">
+          RénoExpert · Diagnostic immobilier IA
+        </p>
+      </div>
+    `;
+
+    const emailSent = await sendEmail(user.email, '🔐 Réinitialisation de votre mot de passe RénoExpert', htmlContent);
+
+    if (!emailSent) {
+      console.error('⚠️ Échec envoi email reset pour', user.email);
+      return res.status(500).json({ error: 'Impossible d\'envoyer l\'email pour le moment. Réessayez plus tard.' });
+    }
+
+    console.log('✅ Email de reset envoyé à', user.email);
+    res.json({
+      success: true,
+      message: 'Si cet email existe dans notre base, vous allez recevoir un lien de réinitialisation.'
+    });
+  } catch (error) {
+    console.error('Erreur forgot-password:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Étape 2 : vérifier qu'un token de reset est valide (avant d'afficher le formulaire)
+app.get('/api/auth/validate-reset-token', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Token manquant' });
+    }
+
+    const result = await pool.query(
+      `SELECT pr.id, pr.user_id, pr.expires_at, pr.used, u.email
+       FROM password_resets pr
+       JOIN users u ON u.id = pr.user_id
+       WHERE pr.token = $1`,
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ valid: false, error: 'Token invalide' });
+    }
+
+    const reset = result.rows[0];
+    if (reset.used) {
+      return res.json({ valid: false, error: 'Ce lien a déjà été utilisé' });
+    }
+    if (new Date(reset.expires_at) < new Date()) {
+      return res.json({ valid: false, error: 'Ce lien a expiré (validité : 1h)' });
+    }
+
+    res.json({ valid: true, email: reset.email });
+  } catch (error) {
+    console.error('Erreur validate-reset-token:', error);
+    res.status(500).json({ valid: false, error: 'Erreur serveur' });
+  }
+});
+
+// Étape 3 : l'utilisateur soumet son nouveau mot de passe via le lien magique
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token et nouveau mot de passe requis' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Le mot de passe doit faire au moins 6 caractères' });
+    }
+
+    // Récupérer le token de reset
+    const resetResult = await pool.query(
+      `SELECT id, user_id, expires_at, used FROM password_resets WHERE token = $1`,
+      [token]
+    );
+    if (resetResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Lien invalide' });
+    }
+    const reset = resetResult.rows[0];
+    if (reset.used) {
+      return res.status(400).json({ error: 'Ce lien a déjà été utilisé' });
+    }
+    if (new Date(reset.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'Ce lien a expiré (validité : 1h)' });
+    }
+
+    // Mettre à jour le mot de passe
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [passwordHash, reset.user_id]
+    );
+
+    // Marquer le token comme utilisé (anti-réutilisation)
+    await pool.query(
+      'UPDATE password_resets SET used = TRUE WHERE id = $1',
+      [reset.id]
+    );
+
+    // Invalider toutes les sessions actives (sécurité : si quelqu'un avait piraté le compte, il est déconnecté)
+    await pool.query(
+      'UPDATE users SET session_token = NULL, session_expires = NULL WHERE id = $1',
+      [reset.user_id]
+    );
+
+    console.log('🔐 Mot de passe réinitialisé pour user_id =', reset.user_id);
+    res.json({ success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous reconnecter.' });
+  } catch (error) {
+    console.error('Erreur reset-password:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 // ============================================================
