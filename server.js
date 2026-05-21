@@ -2191,7 +2191,8 @@ async function sendBackupEmail(backup) {
       ${tropGros ? `<p style="background:#fff3e0;color:#c2410c;padding:12px;border-radius:8px;font-size:13px;">⚠️ La sauvegarde dépasse la taille maximale d'un email (${sizeMB.toFixed(1)} Mo). Téléchargez-la manuellement via le lien admin de sauvegarde.</p>` : ''}
       <p style="color: #97a3bd; font-size: 12px; line-height: 1.5;">
         🛡️ Conservez cet email. En cas de panne de Railway, ce fichier permet de restaurer vos données.<br>
-        Cette sauvegarde est générée automatiquement chaque nuit.
+        Cette sauvegarde est générée automatiquement chaque nuit.<br>
+        ℹ️ Le fichier joint est au format .txt (contenu JSON) — vous pouvez l'ouvrir avec n'importe quel éditeur de texte.
       </p>
     </div>
   `;
@@ -2207,7 +2208,7 @@ async function sendBackupEmail(backup) {
     if (!tropGros) {
       emailBody.attachment = [{
         content: base64Content,
-        name: `renoexpert-backup-${dateStr}.json`
+        name: `renoexpert-backup-${dateStr}.txt`
       }];
     }
 
