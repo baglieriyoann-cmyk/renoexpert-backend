@@ -9,6 +9,10 @@
 // - Notifications email via Brevo
 // ============================================================
 
+// Forcer le fuseau horaire France (gère automatiquement été/hiver).
+// Évite le décalage UTC dans les dates affichées (emails, dashboard admin).
+process.env.TZ = process.env.TZ || 'Europe/Paris';
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -2092,12 +2096,15 @@ app.get('/admin/feedbacks/export', async (req, res) => {
 // - Backup auto quotidien envoyé par email (pièce jointe)
 
 // Génère un objet JSON avec toutes les tables (sauf les mots de passe en clair, déjà hashés)
-async function generateBackup() {
+// includePhotos = false : version LÉGÈRE (sans les photos base64) pour l'email (limite 20MB Brevo)
+// includePhotos = true : version COMPLÈTE (avec photos) pour le téléchargement manuel
+async function generateBackup(includePhotos = true) {
   const backup = {
     meta: {
       app: 'RénoExpert',
       generated_at: new Date().toISOString(),
-      version: 'v3.15'
+      version: 'v3.16',
+      photos_incluses: includePhotos
     },
     users: [],
     projets: [],
@@ -2115,7 +2122,22 @@ async function generateBackup() {
   const projets = await pool.query(
     'SELECT id, user_email, mode, titre, analysis, data, created_at FROM projets ORDER BY id'
   );
-  backup.projets = projets.rows;
+
+  if (includePhotos) {
+    // Version complète : on garde tout (y compris photos base64)
+    backup.projets = projets.rows;
+  } else {
+    // Version légère : on retire les photos base64 du champ data (trop lourdes pour l'email)
+    backup.projets = projets.rows.map(p => {
+      let data = p.data;
+      if (data && typeof data === 'object' && data.photos) {
+        const nbPhotos = Array.isArray(data.photos) ? data.photos.length : 0;
+        // On remplace le tableau de photos par juste leur nombre (info conservée, poids retiré)
+        data = { ...data, photos: undefined, _photos_count: nbPhotos, _photos_note: 'Photos exclues de la sauvegarde email (trop lourdes). Utilisez le backup manuel complet pour les récupérer.' };
+      }
+      return { ...p, data };
+    });
+  }
 
   // Feedbacks
   const feedbacks = await pool.query(
@@ -2148,11 +2170,17 @@ async function sendBackupEmail(backup) {
   const base64Content = Buffer.from(jsonContent, 'utf-8').toString('base64');
   const c = backup.meta.counts;
 
+  // Protection : si malgré tout le backup dépasse ~18 Mo, on n'envoie pas la pièce jointe
+  // (limite Brevo = 20 Mo, on garde une marge de sécurité)
+  const sizeMB = Buffer.byteLength(base64Content, 'utf-8') / (1024 * 1024);
+  const tropGros = sizeMB > 18;
+
   const htmlContent = `
     <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #0F1F3D;">💾 Sauvegarde RénoExpert du ${dateStr}</h2>
       <p style="color: #5e6987; font-size: 14px; line-height: 1.6;">
-        Voici la sauvegarde automatique de votre base de données, en pièce jointe (format JSON).
+        Voici la sauvegarde automatique de votre base de données${tropGros ? '' : ', en pièce jointe (format JSON)'}.
+        ${backup.meta.photos_incluses ? '' : '<br><em>(Photos exclues pour respecter la limite de taille des emails. Pour une sauvegarde complète avec photos, utilisez le téléchargement manuel.)</em>'}
       </p>
       <div style="background: #f5f7fb; border-radius: 10px; padding: 16px; margin: 16px 0;">
         <strong style="color: #0F1F3D;">Contenu :</strong><br>
@@ -2160,6 +2188,7 @@ async function sendBackupEmail(backup) {
         📁 ${c.projets} projet(s) sauvegardé(s)<br>
         💬 ${c.feedbacks} feedback(s)
       </div>
+      ${tropGros ? `<p style="background:#fff3e0;color:#c2410c;padding:12px;border-radius:8px;font-size:13px;">⚠️ La sauvegarde dépasse la taille maximale d'un email (${sizeMB.toFixed(1)} Mo). Téléchargez-la manuellement via le lien admin de sauvegarde.</p>` : ''}
       <p style="color: #97a3bd; font-size: 12px; line-height: 1.5;">
         🛡️ Conservez cet email. En cas de panne de Railway, ce fichier permet de restaurer vos données.<br>
         Cette sauvegarde est générée automatiquement chaque nuit.
@@ -2168,6 +2197,20 @@ async function sendBackupEmail(backup) {
   `;
 
   try {
+    const emailBody = {
+      sender: { name: 'RénoExpert Backup', email: 'baglieriyoann@gmail.com' },
+      to: [{ email: NOTIFICATION_EMAIL }],
+      subject: `💾 Sauvegarde RénoExpert - ${dateStr}`,
+      htmlContent
+    };
+    // On joint le fichier seulement s'il n'est pas trop gros
+    if (!tropGros) {
+      emailBody.attachment = [{
+        content: base64Content,
+        name: `renoexpert-backup-${dateStr}.json`
+      }];
+    }
+
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
@@ -2175,16 +2218,7 @@ async function sendBackupEmail(backup) {
         'api-key': BREVO_API_KEY,
         'content-type': 'application/json'
       },
-      body: JSON.stringify({
-        sender: { name: 'RénoExpert Backup', email: 'baglieriyoann@gmail.com' },
-        to: [{ email: NOTIFICATION_EMAIL }],
-        subject: `💾 Sauvegarde RénoExpert - ${dateStr}`,
-        htmlContent,
-        attachment: [{
-          content: base64Content,
-          name: `renoexpert-backup-${dateStr}.json`
-        }]
-      })
+      body: JSON.stringify(emailBody)
     });
 
     if (!response.ok) {
@@ -2192,7 +2226,7 @@ async function sendBackupEmail(backup) {
       console.error('❌ Erreur envoi backup email:', errorText);
       return false;
     }
-    console.log(`✅ Backup email envoyé à ${NOTIFICATION_EMAIL} (${c.users} users, ${c.projets} projets)`);
+    console.log(`✅ Backup email envoyé à ${NOTIFICATION_EMAIL} (${c.users} users, ${c.projets} projets, ${sizeMB.toFixed(1)} Mo${tropGros ? ' — pièce jointe omise car trop lourde' : ''})`);
     return true;
   } catch (err) {
     console.error('❌ Erreur envoi backup email:', err.message);
@@ -2207,7 +2241,7 @@ app.get('/admin/backup', async (req, res) => {
     return res.status(403).json({ error: 'Accès refusé' });
   }
   try {
-    const backup = await generateBackup();
+    const backup = await generateBackup(true); // version COMPLÈTE avec photos
     const dateStr = new Date().toISOString().split('T')[0];
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="renoexpert-backup-${dateStr}.json"`);
@@ -2225,7 +2259,7 @@ app.get('/admin/backup/email', async (req, res) => {
     return res.status(403).json({ error: 'Accès refusé' });
   }
   try {
-    const backup = await generateBackup();
+    const backup = await generateBackup(false); // version LÉGÈRE sans photos (email)
     const sent = await sendBackupEmail(backup);
     if (sent) {
       res.json({ success: true, message: `Backup envoyé à ${NOTIFICATION_EMAIL}`, counts: backup.meta.counts });
@@ -2251,7 +2285,7 @@ async function checkAndRunDailyBackup() {
     if (hour === 3 && lastBackupDate !== today) {
       lastBackupDate = today;
       console.log('🕒 Déclenchement du backup quotidien automatique...');
-      const backup = await generateBackup();
+      const backup = await generateBackup(false); // version LÉGÈRE sans photos (email)
       await sendBackupEmail(backup);
     }
   } catch (err) {
