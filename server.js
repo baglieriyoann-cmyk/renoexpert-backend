@@ -21,9 +21,99 @@ const pdfGen = require('./pdfGenerator');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Railway place un proxy devant l'app : faire confiance au 1er proxy
+// pour récupérer la vraie IP du client (utile pour le rate-limiting).
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ============================================================
+// RATE-LIMITING (maison, sans dépendance externe)
+// ============================================================
+// Protège contre les abus : brute-force sur les mots de passe,
+// spam de requêtes, bots, et explosion de la facture API.
+// Stockage en mémoire (suffisant pour un seul serveur Railway).
+// Identifie par IP. Se nettoie automatiquement.
+const rateLimitStore = new Map();
+
+// Nettoyage périodique des entrées expirées (toutes les 10 min)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, data] of rateLimitStore.entries()) {
+    if (now > data.resetAt) rateLimitStore.delete(key);
+  }
+}, 10 * 60 * 1000);
+
+// Récupère l'IP réelle du client (Railway met un proxy devant)
+function getClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return fwd.split(',')[0].trim();
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+}
+
+// Crée un middleware de rate-limit configurable
+// - windowMs : fenêtre de temps en millisecondes
+// - max : nombre maximum de requêtes autorisées dans la fenêtre
+// - name : identifiant du limiteur (pour séparer les compteurs par type de route)
+// - message : message d'erreur personnalisé
+function createRateLimiter({ windowMs, max, name, message }) {
+  return (req, res, next) => {
+    const ip = getClientIp(req);
+    const key = `${name}:${ip}`;
+    const now = Date.now();
+
+    let data = rateLimitStore.get(key);
+    if (!data || now > data.resetAt) {
+      // Nouvelle fenêtre
+      data = { count: 1, resetAt: now + windowMs };
+      rateLimitStore.set(key, data);
+      return next();
+    }
+
+    data.count++;
+    if (data.count > max) {
+      const retryAfterSec = Math.ceil((data.resetAt - now) / 1000);
+      res.set('Retry-After', String(retryAfterSec));
+      const retryMin = Math.ceil(retryAfterSec / 60);
+      return res.status(429).json({
+        error: message || `Trop de requêtes. Réessayez dans ${retryMin} minute(s).`,
+        code: 'RATE_LIMIT_EXCEEDED',
+        retryAfter: retryAfterSec
+      });
+    }
+    next();
+  };
+}
+
+// Limiteur AUTH : anti brute-force (login, register, forgot-password)
+// 10 tentatives / 15 min par IP
+const authLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  name: 'auth',
+  message: 'Trop de tentatives de connexion. Pour votre sécurité, réessayez dans 15 minutes.'
+});
+
+// Limiteur IA : anti-abus coûteux (analyze, refine)
+// 20 requêtes / heure par IP (en plus du quota de 5 par compte)
+const aiLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  name: 'ai',
+  message: 'Trop d\'analyses lancées en peu de temps. Réessayez dans une heure.'
+});
+
+// Limiteur GÉNÉRAL : anti-spam sur les autres routes API
+// 120 requêtes / 15 min par IP
+const generalLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  name: 'general',
+  message: 'Trop de requêtes. Patientez quelques minutes.'
+});
+
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -324,7 +414,7 @@ async function incrementAnalysesCounter(userId) {
 // ============================================================
 
 // INSCRIPTION
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, password, nom } = req.body;
     
@@ -400,7 +490,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // CONNEXION
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     
@@ -494,7 +584,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // ============================================================
 
 // Étape 1 : l'utilisateur saisit son email, on lui envoie un lien magique
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || typeof email !== 'string') {
@@ -621,7 +711,7 @@ app.get('/api/auth/validate-reset-token', async (req, res) => {
 });
 
 // Étape 3 : l'utilisateur soumet son nouveau mot de passe via le lien magique
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
@@ -1375,7 +1465,7 @@ ${systemPrompt}`;
   return message.content[0].text;
 }
 
-app.post('/api/analyze/visite', requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -1413,7 +1503,7 @@ app.post('/api/analyze/visite', requireAuth, checkAnalysesQuota, upload.fields([
   }
 });
 
-app.post('/api/analyze/reparation', requireAuth, checkAnalysesQuota, upload.array('photos', 10), async (req, res) => {
+app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, upload.array('photos', 10), async (req, res) => {
   try {
     const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
@@ -1428,7 +1518,7 @@ app.post('/api/analyze/reparation', requireAuth, checkAnalysesQuota, upload.arra
   }
 });
 
-app.post('/api/analyze/agent', requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -1451,7 +1541,7 @@ app.post('/api/analyze/agent', requireAuth, checkAnalysesQuota, upload.fields([{
   }
 });
 
-app.post('/api/analyze/marchand', requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -1486,7 +1576,7 @@ IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 // ROUTES D'AFFINEMENT (sans photos, sur la base d'une analyse précédente)
 // ============================================================
 
-app.post('/api/refine/visite', requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/visite', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -1500,7 +1590,7 @@ app.post('/api/refine/visite', requireAuth, checkAnalysesQuota, async (req, res)
   }
 });
 
-app.post('/api/refine/reparation', requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/reparation', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -1514,7 +1604,7 @@ app.post('/api/refine/reparation', requireAuth, checkAnalysesQuota, async (req, 
   }
 });
 
-app.post('/api/refine/agent', requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -1528,7 +1618,7 @@ app.post('/api/refine/agent', requireAuth, checkAnalysesQuota, async (req, res) 
   }
 });
 
-app.post('/api/refine/marchand', requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -1555,7 +1645,7 @@ Nombre de lots envisagés : ${nb_lots}
 // FEEDBACK (avec notification email si négatif)
 // ============================================================
 
-app.post('/api/feedback', async (req, res) => {
+app.post('/api/feedback', generalLimiter, async (req, res) => {
   try {
     const { mode, note, probleme, location, userId, userEmail } = req.body;
     
@@ -1728,7 +1818,7 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 // PDF ROUTES (avec design pro v3.4)
 // ============================================================
 
-app.post('/api/pdf/visite', requireAuth, async (req, res) => {
+app.post('/api/pdf/visite', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, location, surface, visite_type, loyer_vise, prix_achat } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1739,7 +1829,7 @@ app.post('/api/pdf/visite', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/pdf/reparation', requireAuth, async (req, res) => {
+app.post('/api/pdf/reparation', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, description } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1750,7 +1840,7 @@ app.post('/api/pdf/reparation', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/pdf/agent', requireAuth, async (req, res) => {
+app.post('/api/pdf/agent', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1761,7 +1851,7 @@ app.post('/api/pdf/agent', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/pdf/marchand', requireAuth, async (req, res) => {
+app.post('/api/pdf/marchand', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
@@ -1995,6 +2085,185 @@ app.get('/admin/feedbacks/export', async (req, res) => {
 });
 
 // ============================================================
+// SAUVEGARDE AUTOMATIQUE DE LA BASE
+// ============================================================
+// Exporte toutes les données importantes en JSON.
+// - Endpoint manuel : GET /admin/backup?token=ADMIN_TOKEN
+// - Backup auto quotidien envoyé par email (pièce jointe)
+
+// Génère un objet JSON avec toutes les tables (sauf les mots de passe en clair, déjà hashés)
+async function generateBackup() {
+  const backup = {
+    meta: {
+      app: 'RénoExpert',
+      generated_at: new Date().toISOString(),
+      version: 'v3.15'
+    },
+    users: [],
+    projets: [],
+    feedbacks: []
+  };
+
+  // Users (on inclut le hash du mot de passe pour pouvoir restaurer les comptes,
+  // mais PAS le mot de passe en clair qui n'existe nulle part de toute façon)
+  const users = await pool.query(
+    'SELECT id, email, nom, plan, nb_analyses, created_at, last_login FROM users ORDER BY id'
+  );
+  backup.users = users.rows;
+
+  // Projets (le travail des agents : le plus important à ne pas perdre)
+  const projets = await pool.query(
+    'SELECT id, user_email, mode, titre, analysis, data, created_at FROM projets ORDER BY id'
+  );
+  backup.projets = projets.rows;
+
+  // Feedbacks
+  const feedbacks = await pool.query(
+    'SELECT id, mode, note, probleme, location, user_email, created_at FROM feedbacks ORDER BY id'
+  );
+  backup.feedbacks = feedbacks.rows;
+
+  backup.meta.counts = {
+    users: backup.users.length,
+    projets: backup.projets.length,
+    feedbacks: backup.feedbacks.length
+  };
+
+  return backup;
+}
+
+// Envoie un email avec le backup JSON en pièce jointe (via Brevo)
+async function sendBackupEmail(backup) {
+  if (!BREVO_API_KEY) {
+    console.log('⚠️ BREVO_API_KEY non configurée, backup email non envoyé');
+    return false;
+  }
+  if (!NOTIFICATION_EMAIL) {
+    console.log('⚠️ NOTIFICATION_EMAIL non configuré, backup email non envoyé');
+    return false;
+  }
+
+  const dateStr = new Date().toISOString().split('T')[0];
+  const jsonContent = JSON.stringify(backup, null, 2);
+  const base64Content = Buffer.from(jsonContent, 'utf-8').toString('base64');
+  const c = backup.meta.counts;
+
+  const htmlContent = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #0F1F3D;">💾 Sauvegarde RénoExpert du ${dateStr}</h2>
+      <p style="color: #5e6987; font-size: 14px; line-height: 1.6;">
+        Voici la sauvegarde automatique de votre base de données, en pièce jointe (format JSON).
+      </p>
+      <div style="background: #f5f7fb; border-radius: 10px; padding: 16px; margin: 16px 0;">
+        <strong style="color: #0F1F3D;">Contenu :</strong><br>
+        👤 ${c.users} utilisateur(s)<br>
+        📁 ${c.projets} projet(s) sauvegardé(s)<br>
+        💬 ${c.feedbacks} feedback(s)
+      </div>
+      <p style="color: #97a3bd; font-size: 12px; line-height: 1.5;">
+        🛡️ Conservez cet email. En cas de panne de Railway, ce fichier permet de restaurer vos données.<br>
+        Cette sauvegarde est générée automatiquement chaque nuit.
+      </p>
+    </div>
+  `;
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: 'RénoExpert Backup', email: 'baglieriyoann@gmail.com' },
+        to: [{ email: NOTIFICATION_EMAIL }],
+        subject: `💾 Sauvegarde RénoExpert - ${dateStr}`,
+        htmlContent,
+        attachment: [{
+          content: base64Content,
+          name: `renoexpert-backup-${dateStr}.json`
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Erreur envoi backup email:', errorText);
+      return false;
+    }
+    console.log(`✅ Backup email envoyé à ${NOTIFICATION_EMAIL} (${c.users} users, ${c.projets} projets)`);
+    return true;
+  } catch (err) {
+    console.error('❌ Erreur envoi backup email:', err.message);
+    return false;
+  }
+}
+
+// Endpoint de téléchargement manuel du backup (protégé par ADMIN_TOKEN)
+app.get('/admin/backup', async (req, res) => {
+  const token = req.query.token;
+  if (token !== ADMIN_TOKEN) {
+    return res.status(403).json({ error: 'Accès refusé' });
+  }
+  try {
+    const backup = await generateBackup();
+    const dateStr = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="renoexpert-backup-${dateStr}.json"`);
+    res.send(JSON.stringify(backup, null, 2));
+  } catch (error) {
+    console.error('Erreur backup manuel:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint pour déclencher manuellement un backup PAR EMAIL (protégé par ADMIN_TOKEN)
+app.get('/admin/backup/email', async (req, res) => {
+  const token = req.query.token;
+  if (token !== ADMIN_TOKEN) {
+    return res.status(403).json({ error: 'Accès refusé' });
+  }
+  try {
+    const backup = await generateBackup();
+    const sent = await sendBackupEmail(backup);
+    if (sent) {
+      res.json({ success: true, message: `Backup envoyé à ${NOTIFICATION_EMAIL}`, counts: backup.meta.counts });
+    } else {
+      res.status(500).json({ error: 'Échec envoi email (vérifiez BREVO_API_KEY et NOTIFICATION_EMAIL)' });
+    }
+  } catch (error) {
+    console.error('Erreur backup email manuel:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Scheduler : backup automatique quotidien
+// On vérifie toutes les heures s'il est temps de faire le backup (cible : ~3h du matin).
+let lastBackupDate = null;
+async function checkAndRunDailyBackup() {
+  try {
+    const now = new Date();
+    const hour = now.getHours();
+    const today = now.toISOString().split('T')[0];
+
+    // Déclenche entre 3h et 4h du matin, une seule fois par jour
+    if (hour === 3 && lastBackupDate !== today) {
+      lastBackupDate = today;
+      console.log('🕒 Déclenchement du backup quotidien automatique...');
+      const backup = await generateBackup();
+      await sendBackupEmail(backup);
+    }
+  } catch (err) {
+    console.error('❌ Erreur backup auto:', err.message);
+  }
+}
+// Vérifie toutes les heures
+setInterval(checkAndRunDailyBackup, 60 * 60 * 1000);
+// Vérifie aussi une fois au démarrage (au cas où le serveur redémarre à 3h)
+setTimeout(checkAndRunDailyBackup, 30 * 1000);
+
+// ============================================================
 // DÉMARRAGE
 // ============================================================
 
@@ -2004,4 +2273,5 @@ app.listen(PORT, () => {
   console.log(`📧 Brevo : ${BREVO_API_KEY ? 'configuré' : '⚠️ NON CONFIGURÉ'}`);
   console.log(`👑 Admin email : ${ADMIN_EMAIL || '⚠️ NON CONFIGURÉ'}`);
   console.log(`🔑 Admin token : ${ADMIN_TOKEN === 'admin123' ? '⚠️ Token par défaut' : '✅ configuré'}`);
+  console.log(`💾 Backup auto : quotidien à 3h → ${NOTIFICATION_EMAIL || '⚠️ NOTIFICATION_EMAIL non configuré'}`);
 });
