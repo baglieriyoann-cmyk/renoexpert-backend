@@ -935,6 +935,21 @@ CONNAISSANCES TECHNIQUES CARRELAGE :
 - ASPIRATION à chaque étape MAJEURE du chantier (fin de démolition, avant collage, avant peinture). NE JAMAIS écrire "aspirez après chaque coupe" ni "à chaque découpe" — perte de temps inutile sur chantier. La scie à eau capte la poussière, et un nettoyage en fin de phase suffit.
 - Vérification alignement règle/laser au fur et à mesure
 
+CONNAISSANCES TECHNIQUES PEINTURE (quantités et prix — valeurs terrain à appliquer STRICTEMENT) :
+- CONSOMMATION peinture : 1 litre couvre 10 m² POUR UNE COUCHE.
+- TOUJOURS compter 2 couches en finition (sauf mention contraire explicite) → donc DOUBLER les quantités : pour 10 m² en 2 couches, prévoir 2 litres.
+- Ajouter la SOUS-COUCHE (primaire d'accrochage) en plus : 1 litre pour 10 m² (1 couche), surtout sur placo neuf, enduit frais ou support poreux.
+- PRIX peinture : un pot de 10 litres coûte entre 50 € et 150 €. Compter 100 € pour 10 L comme prix de référence d'une bonne peinture (qualité pro, lessivable). NE JAMAIS chiffrer un pot de 10 L à moins de 50 €.
+- Exemple de calcul correct pour une chambre de 10 m² au sol (~25-30 m² de murs + plafond) : surface à peindre ~30 m², 2 couches = 60 m² à couvrir = 6 L de finition + 3 L de sous-couche. Soit environ 1 pot de 10 L de finition (~100 €) + sous-couche.
+- TOUJOURS arrondir au pot entier supérieur et conseiller un léger surplus (raccords, retouches).
+
+CONNAISSANCES TECHNIQUES ENDUIT (quantités et prix — valeurs terrain à appliquer STRICTEMENT) :
+- Les quantités d'enduit sont SOUVENT SOUS-ESTIMÉES : être généreux dans les calculs.
+- RÈGLE TERRAIN de référence : pour enduire une chambre de ~10 m² au sol AVEC le plafond, compter 2 sacs/seaux de 25 kg d'enduit. NE JAMAIS descendre en dessous.
+- Donc pour des surfaces plus grandes, faire le prorata à partir de cette base (2 × 25 kg pour 10 m² de pièce avec plafond).
+- Toujours prévoir un sac de surplus pour les reprises et imperfections.
+- Enduit de lissage/garnissant : privilégier fournisseurs pro (Lanko / Parexlanko).
+
 CONNAISSANCES TECHNIQUES PLACO/ISOLATION/CLOISONS :
 - Règle de la lame d'air : Rail au sol/plafond = Épaisseur isolant + 1 cm de retrait du mur (lame d'air 1cm)
 - Exemple : isolant 10 cm -> rail à 11 cm du mur
