@@ -349,6 +349,130 @@ function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+// ============================================================
+// DONNÉES DE PRIX IMMOBILIER RÉELLES (DVF - data.gouv.fr)
+// ============================================================
+// Interroge la base officielle des ventes immobilières (Demandes de Valeurs
+// Foncières) pour calculer un prix au m² médian réel sur une commune.
+// Robuste : en cas d'échec de l'API, renvoie null (l'IA basculera sur l'estimation).
+const dvfCache = new Map();
+const DVF_CACHE_MS = 24 * 60 * 60 * 1000; // 24h
+
+function median(arr) {
+  if (!arr.length) return null;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? Math.round(sorted[mid]) : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+// Récupère le code INSEE d'une commune à partir du code postal (API officielle géo)
+async function getCodeInsee(codePostal, nomCommune) {
+  try {
+    const url = `https://geo.api.gouv.fr/communes?codePostal=${encodeURIComponent(codePostal)}&fields=nom,code&format=json`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const communes = await r.json();
+    if (!communes || communes.length === 0) return null;
+    if (communes.length > 1 && nomCommune) {
+      const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
+      const match = communes.find(c => norm(c.nom) === norm(nomCommune) || norm(c.nom).includes(norm(nomCommune)) || norm(nomCommune).includes(norm(c.nom)));
+      if (match) return { code: match.code, nom: match.nom };
+    }
+    return { code: communes[0].code, nom: communes[0].nom };
+  } catch (err) {
+    console.error('⚠️ getCodeInsee échec:', err.message);
+    return null;
+  }
+}
+
+// Interroge DVF et calcule le prix médian au m² pour MAISONS et APPARTEMENTS
+async function getDVFData(codePostal, nomCommune) {
+  if (!codePostal) return null;
+  const cacheKey = String(codePostal);
+  const cached = dvfCache.get(cacheKey);
+  if (cached && Date.now() < cached.expires) return cached.data;
+
+  try {
+    const insee = await getCodeInsee(codePostal, nomCommune);
+    if (!insee) return null;
+
+    const url = `https://api.dvf.etalab.gouv.fr/mutations3?code_commune=${insee.code}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return null;
+    const json = await r.json();
+    const mutations = json.resultats || json.mutations || (Array.isArray(json) ? json : []);
+    if (!Array.isArray(mutations) || mutations.length === 0) return null;
+
+    const prixM2ParType = { Maison: [], Appartement: [] };
+    mutations.forEach(m => {
+      const valeur = parseFloat(m.valeur_fonciere);
+      const surface = parseFloat(m.surface_reelle_bati);
+      const type = m.type_local;
+      if (!valeur || !surface || surface < 9) return;
+      if (valeur < 10000 || valeur > 3000000) return;
+      const prixM2 = valeur / surface;
+      if (prixM2 < 200 || prixM2 > 20000) return;
+      if (type === 'Maison') prixM2ParType.Maison.push(prixM2);
+      else if (type === 'Appartement') prixM2ParType.Appartement.push(prixM2);
+    });
+
+    const result = {
+      commune: insee.nom,
+      code_insee: insee.code,
+      maison: { prix_m2_median: median(prixM2ParType.Maison), nb_ventes: prixM2ParType.Maison.length },
+      appartement: { prix_m2_median: median(prixM2ParType.Appartement), nb_ventes: prixM2ParType.Appartement.length },
+      source: 'DVF (ventes reelles enregistrees, data.gouv.fr)'
+    };
+    dvfCache.set(cacheKey, { data: result, expires: Date.now() + DVF_CACHE_MS });
+    return result;
+  } catch (err) {
+    console.error('⚠️ getDVFData échec:', err.message);
+    return null;
+  }
+}
+
+// Construit un bloc texte à injecter dans le prompt avec les vraies données prix
+function buildDVFContext(dvf, prixAgentM2) {
+  let bloc = '\n=== DONNEES DE PRIX REELLES (a utiliser EN PRIORITE pour l\'estimation) ===\n';
+  if (prixAgentM2 && parseFloat(prixAgentM2) > 0) {
+    bloc += `Prix au m2 de reference SAISI PAR L'AGENT (il connait son secteur) : ${prixAgentM2} €/m2. C'est la donnee la PLUS fiable, utilise-la comme pivot principal.\n`;
+  }
+  if (dvf) {
+    bloc += `\nVentes reelles enregistrees (base DVF officielle) pour ${dvf.commune} :\n`;
+    if (dvf.maison.prix_m2_median) {
+      bloc += `- MAISONS : prix median ${dvf.maison.prix_m2_median} €/m2 (sur ${dvf.maison.nb_ventes} ventes reelles)\n`;
+    }
+    if (dvf.appartement.prix_m2_median) {
+      bloc += `- APPARTEMENTS : prix median ${dvf.appartement.prix_m2_median} €/m2 (sur ${dvf.appartement.nb_ventes} ventes reelles)\n`;
+    }
+    bloc += `Source : ${dvf.source}.\n`;
+    bloc += `\nNOTE IMPORTANTE : ces prix DVF sont des MEDIANES toutes ventes confondues (biens en bon etat ET a renover melanges). Pour un bien EN BON ETAT ou RENOVE, le prix se situe dans le HAUT de la fourchette, voire au-dessus de la mediane. Pour un bien a renover, plutot dans le bas. N'utilise PAS la mediane brute comme prix de vente d'un bien renove : ajuste a la hausse selon l'etat reel constate sur les photos.\n`;
+  } else if (!prixAgentM2) {
+    bloc += 'Aucune donnee DVF disponible pour cette commune et aucun prix saisi par l\'agent.\n';
+    bloc += 'IMPORTANT : sois PRUDENT et plutot genereux dans l\'estimation. Ne sous-estime JAMAIS un bien. En cas de doute, donne une fourchette large et precise que l\'agent doit valider le prix avec sa connaissance du secteur et les annonces comparables locales.\n';
+  }
+  bloc += '=== FIN DONNEES PRIX ===\n';
+  return bloc;
+}
+
+// Extrait un code postal (5 chiffres) d'une chaîne de localisation
+function extraireCodePostal(location) {
+  if (!location) return null;
+  const m = String(location).match(/\b(\d{5})\b/);
+  return m ? m[1] : null;
+}
+
+// Extrait le nom de commune d'une chaîne (retire le code postal et la ponctuation)
+function extraireNomCommune(location) {
+  if (!location) return null;
+  return String(location)
+    .replace(/\b\d{5}\b/g, '')
+    .replace(/[,;]/g, ' ')
+    .trim()
+    .split(/\s{2,}/)[0]
+    .trim() || null;
+}
+
 // Middleware pour vérifier l'authentification
 async function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '') || req.body.token || req.query.token;
@@ -1236,8 +1360,10 @@ PARQUET ANCIEN
 PRIX DE MARCHÉ — SOURCES ET CALIBRAGE
 ==========================================
 - SOURCE DE RÉFÉRENCE : meilleursagents.com (cite-la dans la fiche). Compléter avec DVF si pertinent.
-- À Margny-lès-Compiègne (60880), le prix moyen actuel des MAISONS est de 2 502 €/m² (source meilleursagents.com). Utilise CE chiffre comme pivot, pas une fourchette inventée.
-- Donne ensuite une fourchette resserrée autour de ce pivot : -10 % (prix bas vente rapide) / pivot (prix juste) / +10 % (prix haut, bien optimisé).
+- Pour l'estimation du prix de vente : utilise EN PRIORITÉ le bloc "DONNEES DE PRIX REELLES" fourni dans le contexte (prix saisi par l'agent et/ou ventes réelles DVF de la commune). C'est la base la plus fiable.
+- Si des données DVF sont fournies : pars du prix médian au m² du secteur, puis AJUSTE selon l'état réel du bien constaté sur les photos (un bien en bon état ou rénové se vend dans le HAUT de la fourchette, voire au-dessus de la médiane ; un bien à rénover, dans le bas). Ne livre JAMAIS la médiane brute comme prix d'un bien en bon état.
+- Si aucune donnée de prix n'est fournie : sois prudent et plutôt généreux, ne sous-estime JAMAIS, et précise clairement que l'agent doit valider avec sa connaissance du secteur.
+- Donne ensuite une fourchette resserrée : prix bas (vente rapide) / prix juste / prix haut (bien optimisé), cohérente avec le m² retenu × la surface.
 - Calibrage réel : une maison de 80 m² rénovée dans le centre vient d'être vendue 225 000 € (soit ~2 812 €/m², au-dessus du marché grâce à la rénovation). Tiens-en compte si le bien est de qualité comparable.
 - Pour toute autre commune, indique le prix m² médian "meilleursagents.com" si tu le connais avec une bonne probabilité ; sinon précise "donnée à confirmer sur meilleursagents.com".
 
@@ -1288,7 +1414,7 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 [5 phrases clés entre guillemets, courtes, percutantes, à utiliser pendant les visites. Pas d'emoji.]
 
 ## Notes finales
-[Mention "Tarifs travaux : estimations indicatives marché Hauts-de-France 2025 — non contractuels, devis artisans à confirmer." + "Source prix m² : meilleursagents.com." + si DPE manquant : "Le DPE peut être ajouté plus tard et la fiche sera régénérée."]`,
+[Mention "Tarifs travaux : estimations indicatives marché Hauts-de-France 2025 — non contractuels, devis artisans à confirmer." + "Source prix m² : ventes réelles DVF (data.gouv.fr) et estimation de l'agent." + si DPE manquant : "Le DPE peut être ajouté plus tard et la fiche sera régénérée."]`,
 
   marchand: `Tu es un expert marchand de biens français senior. Analyse ce bien pour une opération MB (marchand de biens) avec engagement de revente sous 5 ans, frais notaire MB 3% (article 1115 CGI).
 
@@ -1350,7 +1476,37 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 
 ## Recommandation finale
 🟢 GO / 🟡 GO avec négociation / 🔴 PASS
-[Justification]`
+[Justification]`,
+
+  annonce: `Tu es un expert en rédaction d'annonces immobilières qui VENDENT. À partir des informations du bien et de l'analyse fournie, rédige des annonces prêtes à publier, optimisées pour convertir.
+
+RÈGLES DE STYLE :
+- Pas d'emojis dans le corps des annonces (sauf si demandé), ton professionnel et chaleureux.
+- Phrases courtes, percutantes. On donne envie de visiter.
+- Met en avant les ATOUTS et le POTENTIEL, sois honnête (ne mens pas sur l'état).
+- Utilise les vrais chiffres fournis (surface, pièces, DPE si dispo).
+- Termine par un appel à l'action ("Contactez l'agence pour une visite").
+- N'invente PAS d'informations absentes (nombre de chambres, etc.) : reste sur ce qui est fourni.
+
+PRODUIS EXACTEMENT CETTE STRUCTURE EN MARKDOWN :
+
+## Titre accrocheur
+[Un titre court et vendeur, max 70 caractères, avec le type de bien + atout principal + ville]
+
+## Annonce LeBonCoin
+[Texte direct et efficace, 150-250 mots. Style accessible, grand public. Liste les caractéristiques clés. Met en avant le rapport qualité/prix ou le potentiel.]
+
+## Annonce SeLoger / site d'agence
+[Texte plus soigné et professionnel, 200-300 mots. Vocabulaire immobilier de qualité, structure claire : accroche, description des espaces, atouts, environnement, conclusion avec appel à l'action.]
+
+## Version courte (réseaux sociaux)
+[2-3 phrases percutantes pour un post Facebook/Instagram, avec 3-4 hashtags pertinents.]
+
+## Points forts à mettre en avant
+[Liste à puces des 4-6 arguments de vente les plus convaincants, basés sur l'analyse.]
+
+## Conseil de diffusion
+[1-2 phrases : sur quelles plateformes diffuser en priorité et pourquoi, selon le type de bien.]`
 };
 
 // ============================================================
@@ -1373,6 +1529,30 @@ app.get('/api/health', async (req, res) => {
     });
   } catch (err) {
     res.json({ status: 'OK', database: 'error: ' + err.message });
+  }
+});
+
+// Récupère le prix au m² DVF d'une commune (appelé quand l'agent saisit le code postal)
+// Réponse rapide pour pré-remplir le champ prix. Protégé par auth.
+app.get('/api/prix-secteur', requireAuth, async (req, res) => {
+  try {
+    const { code_postal, commune } = req.query;
+    const cp = code_postal || extraireCodePostal(commune);
+    if (!cp) return res.json({ success: false, error: 'Code postal manquant' });
+    const dvf = await getDVFData(cp, commune);
+    if (!dvf) {
+      return res.json({ success: false, error: 'Pas de données DVF pour cette commune' });
+    }
+    res.json({
+      success: true,
+      commune: dvf.commune,
+      maison: dvf.maison,
+      appartement: dvf.appartement,
+      source: dvf.source
+    });
+  } catch (error) {
+    console.error('Erreur prix-secteur:', error);
+    res.json({ success: false, error: error.message });
   }
 });
 
@@ -1486,7 +1666,7 @@ ${systemPrompt}`;
 
 app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal } = req.body;
+    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
@@ -1500,6 +1680,10 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
       context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
       context += regime_fiscal ? `Régime fiscal envisagé : ${regime_fiscal}\n` : '';
     }
+    // Vraies données de prix DVF pour situer la valeur du bien
+    const cpV = extraireCodePostal(location);
+    const dvfV = await getDVFData(cpV, extraireNomCommune(location));
+    context += buildDVFContext(dvfV, prix_m2_agent);
     context += '\n' + precisionsBlock(precisions);
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
@@ -1539,7 +1723,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
 
 app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom, precisions, plus_values } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
@@ -1549,11 +1733,20 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const pvBlock = plus_values && plus_values.trim()
       ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
       : '';
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}\n` + precisionsBlock(precisions);
+    const potentielBlock = potentiel && potentiel.trim()
+      ? `\nPOTENTIEL DU BIEN signalé par l'agent (TRÈS IMPORTANT pour l'estimation) : ${potentiel.trim()}\nCe potentiel (division, agrandissement, combles aménageables, terrain constructible…) crée une valeur qui dépasse le simple prix au m² en l'état. Un bien brut avec un fort potentiel vaut BIEN PLUS que sa valeur actuelle : explique ce potentiel dans la fiche et chiffre la plus-value réalisable. Ne te limite PAS au prix au m² du secteur pour un bien à fort potentiel.\n`
+      : '';
+    // Récupérer les vraies données de prix DVF pour la commune
+    const cp = extraireCodePostal(location);
+    const nomCommune = extraireNomCommune(location);
+    const dvf = await getDVFData(cp, nomCommune);
+    const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
+
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles, photoComments);
     await incrementAnalysesCounter(req.user.id);
-    res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0 });
+    res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0, dvf_utilise: !!dvf });
   } catch (error) {
     console.error('Erreur agent:', error);
     res.status(500).json({ error: error.message });
@@ -1562,13 +1755,18 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions } = req.body;
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     const dpeNote = dpeFiles.length > 0
       ? `\nDPE joint — utilise SES VALEURS RÉELLES (classe, kWh/m²/an, GES) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB.\n`
       : `\nAucun DPE fourni — estime la classe probable d'après les photos et l'année de construction.\n`;
+    // Vraies données de prix DVF pour estimer la revente de façon fiable
+    const cp = extraireCodePostal(location);
+    const nomCommune = extraireNomCommune(location);
+    const dvf = await getDVFData(cp, nomCommune);
+    const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
 Surface : ${surface} m²
@@ -1577,14 +1775,16 @@ Prix demandé : ${prix_demande} €
 Stratégie : ${strategie}
 Nombre de lots envisagés : ${nb_lots}
 ${dpeNote}
+${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
+Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus AJUSTÉES À LA HAUSSE pour un bien rénové (un bien refait à neuf se vend dans le haut de la fourchette du secteur, voire au-dessus de la médiane).
 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, dpeFiles, photoComments);
     await incrementAnalysesCounter(req.user.id);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
-    res.json({ success: true, analysis, frais_notaire_mb_3pct });
+    res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
     console.error('Erreur marchand:', error);
     res.status(500).json({ error: error.message });
@@ -1619,6 +1819,30 @@ app.post('/api/refine/reparation', aiLimiter, requireAuth, checkAnalysesQuota, a
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine reparation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Génère des annonces immobilières (LeBonCoin, SeLoger, réseaux) à partir d'une analyse existante
+app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+  try {
+    const { analysis, surface, location, infos } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante pour générer l\'annonce' });
+
+    const context = `Informations du bien :\n- Surface : ${surface || 'non précisée'} m²\n- Localisation : ${location || 'non précisée'}\n${infos ? '- Détails : ' + infos + '\n' : ''}\n\nVoici l'analyse complète du bien réalisée précédemment (utilise-la comme source d'informations) :\n\n${analysis}\n\n`;
+
+    const userPrompt = `${context}\nÀ partir de ces informations, rédige les annonces immobilières selon le format demandé.\n\n${PROMPTS.annonce}`;
+
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
+    });
+    const annonce = message.content[0].text;
+    await incrementAnalysesCounter(req.user.id);
+    res.json({ success: true, annonce });
+  } catch (error) {
+    console.error('Erreur génération annonce:', error);
     res.status(500).json({ error: error.message });
   }
 });
