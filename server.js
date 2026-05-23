@@ -389,9 +389,52 @@ async function getCodeInsee(codePostal, nomCommune) {
 // Essaie plusieurs sources DVF dans l'ordre jusqu'à ce qu'une réponde.
 // Retourne un tableau de mutations normalisées {valeur, surface, type} ou null.
 async function fetchMutationsDVF(codePostal, codeInsee) {
-  // --- SOURCE 1 : micro-API cquest (filtre direct par code postal, simple et stable) ---
+  // --- SOURCE PRINCIPALE : fichiers CSV officiels géo-DVF (files.data.gouv.fr) ---
+  // Ultra-stable, hébergé sur l'infra officielle. Organisé par code INSEE de commune.
+  // On lit les 2 années les plus récentes disponibles.
+  if (codeInsee) {
+    const dept = codeInsee.substring(0, 2); // ex: "60382" -> "60" (gère aussi 2A/2B)
+    const annees = ['2024', '2023'];
+    let toutes = [];
+    for (const annee of annees) {
+      try {
+        const url = `https://files.data.gouv.fr/geo-dvf/latest/csv/${annee}/communes/${dept}/${codeInsee}.csv`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
+        if (!r.ok) continue;
+        const csv = await r.text();
+        const lignes = csv.split('\n');
+        if (lignes.length < 2) continue;
+        const entetes = lignes[0].split(',');
+        const idx = {
+          valeur: entetes.indexOf('valeur_fonciere'),
+          surface: entetes.indexOf('surface_reelle_bati'),
+          type: entetes.indexOf('type_local'),
+          nature: entetes.indexOf('nature_mutation')
+        };
+        for (let i = 1; i < lignes.length; i++) {
+          const cols = lignes[i].split(',');
+          if (cols.length < entetes.length) continue;
+          const nature = idx.nature >= 0 ? cols[idx.nature] : 'Vente';
+          if (nature && nature !== 'Vente') continue; // garder seulement les ventes
+          toutes.push({
+            valeur: parseFloat(cols[idx.valeur]),
+            surface: parseFloat(cols[idx.surface]),
+            type: cols[idx.type]
+          });
+        }
+      } catch (err) {
+        console.error(`⚠️ DVF CSV ${annee} échec:`, err.message);
+      }
+    }
+    if (toutes.length > 0) {
+      console.log(`✅ DVF CSV officiel : ${toutes.length} lignes pour INSEE ${codeInsee}`);
+      return toutes;
+    }
+  }
+
+  // --- SECOURS : micro-API cquest (filtre direct par code postal) ---
   try {
-    const url = `http://api.cquest.org/dvf?code_postal=${codePostal}`;
+    const url = `https://api.cquest.org/dvf?code_postal=${codePostal}`;
     const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
     if (r.ok) {
       const json = await r.json();
@@ -405,62 +448,12 @@ async function fetchMutationsDVF(codePostal, codeInsee) {
         };
       });
       if (mutations.length > 0) {
-        console.log(`✅ DVF source1 (cquest) : ${mutations.length} mutations pour CP ${codePostal}`);
+        console.log(`✅ DVF secours (cquest) : ${mutations.length} mutations pour CP ${codePostal}`);
         return mutations;
       }
     }
   } catch (err) {
-    console.error('⚠️ DVF source1 (cquest) échec:', err.message);
-  }
-
-  // --- SOURCE 2 : API officielle data.economie.gouv.fr (DVF tabular, filtrable par code postal) ---
-  try {
-    const annees = ['2024', '2023'];
-    let toutes = [];
-    for (const annee of annees) {
-      const url = `https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/demandes-de-valeurs-foncieres-georeferencees/records`
-        + `?where=code_postal%3D%22${codePostal}%22%20AND%20(type_local%3D%22Maison%22%20OR%20type_local%3D%22Appartement%22)`
-        + `&select=valeur_fonciere,surface_reelle_bati,type_local&limit=100&refine=annee_mutation%3A%22${annee}%22`;
-      const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
-      if (r.ok) {
-        const json = await r.json();
-        const recs = json.results || [];
-        recs.forEach(m => toutes.push({
-          valeur: parseFloat(m.valeur_fonciere),
-          surface: parseFloat(m.surface_reelle_bati),
-          type: m.type_local
-        }));
-      }
-      if (toutes.length >= 40) break;
-    }
-    if (toutes.length > 0) {
-      console.log(`✅ DVF source2 (data.economie) : ${toutes.length} ventes pour CP ${codePostal}`);
-      return toutes;
-    }
-  } catch (err) {
-    console.error('⚠️ DVF source2 échec:', err.message);
-  }
-
-  // --- SOURCE 3 : API Etalab geo (par code commune INSEE) ---
-  if (codeInsee) {
-    try {
-      const url = `https://api.dvf.etalab.gouv.fr/mutations3?code_commune=${codeInsee}`;
-      const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
-      if (r.ok) {
-        const json = await r.json();
-        const mutations = json.resultats || json.mutations || (Array.isArray(json) ? json : []);
-        if (Array.isArray(mutations) && mutations.length > 0) {
-          console.log(`✅ DVF source3 (etalab) : ${mutations.length} mutations pour INSEE ${codeInsee}`);
-          return mutations.map(m => ({
-            valeur: parseFloat(m.valeur_fonciere),
-            surface: parseFloat(m.surface_reelle_bati),
-            type: m.type_local
-          }));
-        }
-      }
-    } catch (err) {
-      console.error('⚠️ DVF source3 échec:', err.message);
-    }
+    console.error('⚠️ DVF secours (cquest) échec:', err.message);
   }
 
   console.log(`❌ DVF : aucune source n'a répondu pour CP ${codePostal} / INSEE ${codeInsee}`);
@@ -1609,6 +1602,23 @@ app.get('/api/dvf-test', async (req, res) => {
     const insee = await getCodeInsee(cp, commune);
     diag.code_insee = insee;
   } catch (e) { diag.code_insee_erreur = e.message; }
+
+  // Test source CSV officielle (files.data.gouv.fr) — la nouvelle source principale
+  try {
+    const insee = diag.code_insee ? diag.code_insee.code : null;
+    if (insee) {
+      const dept = insee.substring(0, 2);
+      const url = `https://files.data.gouv.fr/geo-dvf/latest/csv/2024/communes/${dept}/${insee}.csv`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      diag.sources.csv_officiel = { status: r.status, ok: r.ok, url };
+      if (r.ok) {
+        const csv = await r.text();
+        const lignes = csv.split('\n');
+        diag.sources.csv_officiel.nb_lignes = lignes.length - 1;
+        diag.sources.csv_officiel.entete = lignes[0];
+      }
+    } else { diag.sources.csv_officiel = { skip: 'pas de code INSEE' }; }
+  } catch (e) { diag.sources.csv_officiel = { erreur: e.message }; }
 
   // Test source 1 : data.economie.gouv.fr
   try {
