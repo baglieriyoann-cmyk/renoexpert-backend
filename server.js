@@ -145,6 +145,17 @@ const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://renoexpert.fr').replace(/\/$/, '');
 const LIMITE_ANALYSES_GRATUIT = 5;
 
+// Limites d'analyses GRATUITES par mode (version test/découverte).
+// L'admin ('illimite') n'est jamais concerné.
+const LIMITES_PAR_MODE = {
+  reparation: 1,   // Travaux & Réparations : 1 analyse
+  agent: 3,        // Agent Immobilier : 3 analyses
+  marchand: 1,     // Marchand de Biens : 1 analyse
+  visite: 1        // Visite Immobilière : 1 analyse (PDF réservé au payant)
+};
+// Modes où le PDF est réservé à la version payante (bloqué en version test)
+const MODES_SANS_PDF = ['visite'];
+
 // ============================================================
 // CONNEXION POSTGRESQL
 // ============================================================
@@ -255,7 +266,50 @@ async function initDB() {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token)`);
-    
+
+    // Table de suivi des analyses PAR MODE (quota par mode en version test)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS analyses_par_mode (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        mode VARCHAR(50) NOT NULL,
+        nb_analyses INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, mode)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_apm_user ON analyses_par_mode(user_id, mode)`);
+
+    // Table prospects : emails laissés pour être avertis de la sortie de l'app
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prospects (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        mode VARCHAR(50),
+        user_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(email)`);
+
+    // Table questionnaires : réponses au questionnaire de fin d'analyse
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS questionnaires (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        user_email VARCHAR(255),
+        mode VARCHAR(50),
+        utilite VARCHAR(50),
+        precision_estim VARCHAR(50),
+        pret_a_payer VARCHAR(50),
+        prix_juste VARCHAR(100),
+        amelioration TEXT,
+        recommander VARCHAR(20),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_questionnaires_user ON questionnaires(user_id)`);
+
     console.log('✅ Base de données initialisée');
   } catch (err) {
     console.error('❌ Erreur init DB:', err.message);
@@ -575,21 +629,46 @@ async function requireAuth(req, res, next) {
 // ============================================================
 // QUOTA ANALYSES — Helpers
 // ============================================================
-// Vérifie le quota d'analyses AVANT l'appel à l'IA (à utiliser comme middleware).
-// Bloque l'utilisateur gratuit s'il a déjà atteint 5 analyses.
+// Extrait le mode depuis l'URL de la requête (/api/analyze/agent -> 'agent', /api/refine/visite -> 'visite')
+function getModeFromReq(req) {
+  const m = req.path.match(/\/api\/(?:analyze|refine)\/(\w+)/);
+  if (m) return m[1];
+  if (req.path.includes('/api/annonce')) return 'agent'; // l'annonce compte dans le quota agent
+  return null;
+}
+
+// Récupère le nombre d'analyses déjà faites pour un mode donné
+async function getNbAnalysesMode(userId, mode) {
+  try {
+    const r = await pool.query(
+      'SELECT nb_analyses FROM analyses_par_mode WHERE user_id = $1 AND mode = $2',
+      [userId, mode]
+    );
+    return r.rows.length ? parseInt(r.rows[0].nb_analyses || 0) : 0;
+  } catch (err) {
+    console.error('⚠️ getNbAnalysesMode échec:', err.message);
+    return 0;
+  }
+}
+
+// Vérifie le quota d'analyses PAR MODE AVANT l'appel à l'IA (middleware).
 // L'admin ('illimite') passe toujours.
 async function checkAnalysesQuota(req, res, next) {
   if (req.user.plan === 'illimite') {
     return next();
   }
-  const nbAnalyses = parseInt(req.user.nb_analyses || 0);
-  if (nbAnalyses >= LIMITE_ANALYSES_GRATUIT) {
+  const mode = getModeFromReq(req);
+  const limite = (mode && LIMITES_PAR_MODE[mode] !== undefined) ? LIMITES_PAR_MODE[mode] : LIMITE_ANALYSES_GRATUIT;
+  const nbAnalyses = await getNbAnalysesMode(req.user.id, mode || 'global');
+  if (nbAnalyses >= limite) {
+    const labels = { reparation: 'Travaux & Réparations', agent: 'Agent Immobilier', marchand: 'Marchand de Biens', visite: 'Visite Immobilière' };
     return res.status(403).json({
-      error: `Limite atteinte : ${LIMITE_ANALYSES_GRATUIT} analyses IA gratuites utilisées. Contactez-nous pour passer en Pro.`,
+      error: `Vous avez utilisé votre ${limite > 1 ? limite + ' analyses gratuites' : 'analyse gratuite'} pour le mode ${labels[mode] || mode}. Laissez votre email pour être averti du lancement de la version complète !`,
       code: 'ANALYSES_QUOTA_EXCEEDED',
+      mode: mode,
       quota: {
         utilises: nbAnalyses,
-        limite: LIMITE_ANALYSES_GRATUIT,
+        limite: limite,
         illimite: false
       }
     });
@@ -597,14 +676,22 @@ async function checkAnalysesQuota(req, res, next) {
   next();
 }
 
-// Incrémente le compteur d'analyses APRÈS un appel IA réussi.
-// Ne bloque jamais : si l'incrément échoue, on logue et on continue (l'analyse a déjà été facturée à toi côté Anthropic).
-async function incrementAnalysesCounter(userId) {
+// Incrémente le compteur d'analyses APRÈS un appel IA réussi (global + par mode).
+async function incrementAnalysesCounter(userId, mode) {
   try {
     await pool.query(
       'UPDATE users SET nb_analyses = COALESCE(nb_analyses, 0) + 1 WHERE id = $1',
       [userId]
     );
+    if (mode) {
+      await pool.query(
+        `INSERT INTO analyses_par_mode (user_id, mode, nb_analyses, updated_at)
+         VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id, mode)
+         DO UPDATE SET nb_analyses = analyses_par_mode.nb_analyses + 1, updated_at = CURRENT_TIMESTAMP`,
+        [userId, mode]
+      );
+    }
   } catch (err) {
     console.error('⚠️ Erreur incrément nb_analyses pour user', userId, ':', err.message);
   }
@@ -1903,7 +1990,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(prompt, photos, context, dpeFiles, photoComments);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur visite:', error);
@@ -1928,7 +2015,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur reparation:', error);
@@ -1960,7 +2047,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles, photoComments);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0, dvf_utilise: !!dvf });
   } catch (error) {
     console.error('Erreur agent:', error);
@@ -1997,7 +2084,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, dpeFiles, photoComments);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
@@ -2016,7 +2103,7 @@ app.post('/api/refine/visite', aiLimiter, requireAuth, checkAnalysesQuota, async
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
     const analysis = await refineWithClaude(PROMPTS.visite, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine visite:', error);
@@ -2030,7 +2117,7 @@ app.post('/api/refine/reparation', aiLimiter, requireAuth, checkAnalysesQuota, a
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
     const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine reparation:', error);
@@ -2054,7 +2141,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
       messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
     });
     const annonce = message.content[0].text;
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, annonce });
   } catch (error) {
     console.error('Erreur génération annonce:', error);
@@ -2068,7 +2155,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, checkAnalysesQuota, async 
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
     const analysis = await refineWithClaude(PROMPTS.agent, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
     console.error('Erreur refine agent:', error);
@@ -2090,7 +2177,7 @@ Nombre de lots envisagés : ${nb_lots}
 
 `;
     const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
     const frais_notaire_mb_3pct = prix_demande ? Math.round(parseFloat(prix_demande) * 0.03) : null;
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
@@ -2273,11 +2360,98 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 });
 
 // ============================================================
+// ROUTES PROSPECTS (email "avertir de la sortie") + QUESTIONNAIRE
+// ============================================================
+
+// Enregistre un email de prospect (avertir du lancement) : DB + notification admin
+app.post('/api/prospect', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const { email, mode } = req.body;
+    const emailClean = (email || req.user.email || '').trim().toLowerCase();
+    if (!emailClean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean)) {
+      return res.status(400).json({ error: 'Email invalide' });
+    }
+    // Stocker en DB (éviter les doublons exacts email+mode)
+    await pool.query(
+      `INSERT INTO prospects (email, mode, user_id) VALUES ($1, $2, $3)`,
+      [emailClean, mode || null, req.user.id]
+    );
+    // Notifier l'admin par email
+    sendEmail(
+      NOTIFICATION_EMAIL,
+      '🎯 Nouveau prospect RénoExpert (sortie app)',
+      `<p>Un utilisateur souhaite être averti du lancement :</p>
+       <ul>
+         <li><b>Email :</b> ${emailClean}</li>
+         <li><b>Mode utilisé :</b> ${mode || 'non précisé'}</li>
+         <li><b>Compte :</b> ${req.user.email}</li>
+         <li><b>Date :</b> ${new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}</li>
+       </ul>`
+    ).catch(e => console.error('⚠️ Email prospect admin échec:', e.message));
+    res.json({ success: true, message: 'Merci ! Vous serez averti du lancement.' });
+  } catch (error) {
+    console.error('Erreur prospect:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Enregistre les réponses au questionnaire de fin d'analyse : DB + notification admin
+app.post('/api/questionnaire', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const { mode, utilite, precision_estim, pret_a_payer, prix_juste, amelioration, recommander } = req.body;
+    await pool.query(
+      `INSERT INTO questionnaires (user_id, user_email, mode, utilite, precision_estim, pret_a_payer, prix_juste, amelioration, recommander)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [req.user.id, req.user.email, mode || null, utilite || null, precision_estim || null,
+       pret_a_payer || null, prix_juste || null, amelioration || null, recommander || null]
+    );
+    // Notifier l'admin
+    sendEmail(
+      NOTIFICATION_EMAIL,
+      '📝 Nouveau questionnaire RénoExpert',
+      `<p>Réponse au questionnaire (mode ${mode || '?'}) de ${req.user.email} :</p>
+       <ul>
+         <li><b>Utilité :</b> ${utilite || '-'}</li>
+         <li><b>Précision estimations :</b> ${precision_estim || '-'}</li>
+         <li><b>Prêt à payer :</b> ${pret_a_payer || '-'}</li>
+         <li><b>Prix juste :</b> ${prix_juste || '-'}</li>
+         <li><b>Recommanderait :</b> ${recommander || '-'}</li>
+         <li><b>Amélioration :</b> ${amelioration || '-'}</li>
+       </ul>`
+    ).catch(e => console.error('⚠️ Email questionnaire admin échec:', e.message));
+    res.json({ success: true, message: 'Merci pour votre retour !' });
+  } catch (error) {
+    console.error('Erreur questionnaire:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Route admin : voir les prospects et questionnaires
+app.get('/api/admin/prospects', requireAuth, async (req, res) => {
+  if (req.user.plan !== 'illimite') return res.status(403).json({ error: 'Accès réservé admin' });
+  try {
+    const prospects = await pool.query('SELECT email, mode, created_at FROM prospects ORDER BY created_at DESC LIMIT 500');
+    const questionnaires = await pool.query('SELECT mode, utilite, precision_estim, pret_a_payer, prix_juste, amelioration, recommander, user_email, created_at FROM questionnaires ORDER BY created_at DESC LIMIT 500');
+    res.json({ prospects: prospects.rows, questionnaires: questionnaires.rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
 // PDF ROUTES (avec design pro v3.4)
 // ============================================================
 
 app.post('/api/pdf/visite', generalLimiter, requireAuth, async (req, res) => {
   try {
+    // En version test/découverte, le PDF du mode Visite est réservé à la version complète (sauf admin).
+    if (req.user.plan !== 'illimite') {
+      return res.status(403).json({
+        error: 'Le rapport PDF du mode Visite Immobilière est réservé à la version complète. Idéal pour constituer votre dossier banque avec le détail chiffré des travaux ! Laissez votre email pour être averti du lancement.',
+        code: 'PDF_RESERVE_PAYANT',
+        mode: 'visite'
+      });
+    }
     const { analysis, location, surface, visite_type, loyer_vise, prix_achat } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
     pdfGen.generateVisitePDF({ analysis, location, surface, visite_type, loyer_vise, prix_achat }, res);
