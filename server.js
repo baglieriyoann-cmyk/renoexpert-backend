@@ -1140,28 +1140,67 @@ CONNAISSANCES TECHNIQUES PEINTURE (quantités et prix — valeurs terrain à app
 - Exemple de calcul correct pour une chambre de 10 m² au sol (~25-30 m² de murs + plafond) : surface à peindre ~30 m², 2 couches = 60 m² à couvrir = 6 L de finition + 3 L de sous-couche. Soit environ 1 pot de 10 L de finition (~100 €) + sous-couche.
 - TOUJOURS arrondir au pot entier supérieur et conseiller un léger surplus (raccords, retouches).
 
+PROCÉDURE DE MISE EN PEINTURE SELON LE SUPPORT (à appliquer STRICTEMENT) :
+
+A) CAS DU PLACO NEUF (murs ET plafonds) — cycle des enduits/bandes :
+  1) Rebouchage : boucher UNIQUEMENT les trous de vis au MAP (mortier adhésif).
+  2) Collage des bandes de joints entre les plaques.
+  3) Deuxième passe d'enduit sur les bandes ET sur les têtes de vis.
+  4) Troisième passe d'enduit sur les bandes et sur les vis.
+  5) Si nécessaire : quatrième passe ou ratissage complet du mur.
+  (Même méthode pour les plafonds.)
+  Puis : sous-couche acrylique générale, puis 2 couches de finition.
+
+B) CAS DES MURS ANCIENS (maçonnerie, plâtre ancien) :
+  1) Préparation mécanique : ponçage + dépoussiérage minutieux, vérifier l'état du mur.
+  2) Impression : appliquer une sous-couche de peinture GLYCÉRO directement sur le support pour FIXER/BLOQUER le fond ancien.
+  3) Enduisage général en passes CROISÉES + retouches.
+  4) RÈGLE SYSTÉMATIQUE : chaque couche d'enduit doit être PONCÉE après séchage.
+  5) Une fois propre et poncé : sous-couche acrylique générale.
+  6) Contrôle final : si retouches d'enduit à ce stade, les poncer puis recouvrir LOCALEMENT de sous-couche sur les zones retouchées (évite les "spectres"/traces).
+
+C) FINITION (commune) : le nombre de passes dépend de la teinte :
+  - Finition BLANC : 2 couches de finition blanc.
+  - Finition COULEUR : 2 couches de la couleur choisie.
+
 CONNAISSANCES TECHNIQUES ENDUIT (quantités et prix — valeurs terrain à appliquer STRICTEMENT) :
-- Les quantités d'enduit sont SOUVENT SOUS-ESTIMÉES : être généreux dans les calculs.
+- DISTINCTION ESSENTIELLE :
+  * Sur ANCIEN support (murs briques, plâtre dégradé, support irrégulier) : enduit garnissant/lissage PLEINE SURFACE.
+  * Sur PLACO NEUF (BA13) : PAS d'enduit pleine surface — UNIQUEMENT les bandes à joint en 3-4 passes (voir section PLACO). Ne pas chiffrer des sacs d'enduit de lissage pleine surface pour du placo neuf.
+- Les quantités d'enduit (pleine surface, ancien support) sont SOUVENT SOUS-ESTIMÉES : être généreux dans les calculs.
 - RÈGLE TERRAIN de référence : pour enduire une chambre de ~10 m² au sol AVEC le plafond, compter 2 sacs/seaux de 25 kg d'enduit. NE JAMAIS descendre en dessous.
 - Donc pour des surfaces plus grandes, faire le prorata à partir de cette base (2 × 25 kg pour 10 m² de pièce avec plafond).
-- Toujours prévoir un sac de surplus pour les reprises et imperfections.
+- Toujours prévoir un sac/seau de surplus pour les reprises et imperfections.
+- Acheter l'enduit en SEAU (terme correct), jamais "boîte".
 - Enduit de lissage/garnissant : privilégier fournisseurs pro (Lanko / Parexlanko).
 
 CONNAISSANCES TECHNIQUES PLACO/ISOLATION/CLOISONS :
+- ANALYSE DU SUPPORT / ÉQUERRAGE (pièce à l'état brut, briques/parpaings apparents) : avant toute pose, CALEPINER la pièce pour obtenir des angles à 90°. Si l'équerrage parfait est impossible, s'adapter au mieux en suivant le PARALLÉLISME des murs tout en gardant un ÉCARTEMENT CONSTANT.
 - Règle de la lame d'air : Rail au sol/plafond = Épaisseur isolant + 1 cm de retrait du mur (lame d'air 1cm)
 - Exemple : isolant 10 cm -> rail à 11 cm du mur
 - Épaisseur isolant MINIMUM aujourd'hui : 10 cm (idéal pour les performances thermiques actuelles)
-- Montants tous les 60 cm max
-- Découper rouleaux laine en deux si entraxe 60 cm
-- GAINES TECHNIQUES : passer TOUTES les gaines DERRIÈRE la laine de verre, puis les faire RESSORTIR à travers la laine en pratiquant un PETIT TROU que l'on vient étancher proprement
+- Montants tous les 60 cm.
+- RÈGLE IMPÉRATIVE DE SOLIDITÉ : DOUBLER les montants tous les 60 cm en les vissant DOS À DOS entre eux. Cela crée un bloc rigide qui ne bougera pas. (Donc compter le nombre de montants en conséquence.)
+- PRÉPARATION DE LA LAINE : les rouleaux de laine de verre standards font 1,20 m de large → les COUPER EN DEUX dans la longueur pour obtenir des lés de 60 cm, puis couper à la hauteur sol/plafond. Glisser les morceaux entre les montants doublés.
+- CALCUL DES PLAQUES DE PLÂTRE (BA13) : ne PAS calculer au m². Calculer par le PÉRIMÈTRE à doubler divisé par la largeur d'une plaque (1,20 m). Exemple : 13 ml de périmètre / 1,20 m = ~11 plaques, puis ARRONDIR généreusement au-dessus (13 plaques) pour les chutes et découpes. Toujours prévoir du surplus.
+- PARE-VAPEUR : utiliser EXCLUSIVEMENT de la laine de verre revêtue KRAFT (pare-vapeur intégré). Le kraft se suffit à lui-même. Il est INUTILE et DÉCONSEILLÉ d'ajouter des bâches ou films plastiques supplémentaires.
+- NE PAS prévoir de film pare-vapeur polyéthylène séparé pour un doublage de mur (le film séparé concerne surtout les combles/toitures).
+- DÉCOUPE DE LA LAINE : utiliser un COUTEAU À LAINE (lame longue dentée), PAS un cutter.
+- GAINES TECHNIQUES : passer TOUTES les gaines électriques et tuyaux de plomberie DERRIÈRE la laine de verre, puis les faire RESSORTIR à travers le placo (petit trou étanché proprement).
+- PROTECTION GEL (mur donnant sur l'EXTÉRIEUR) : crucial — la plomberie ne doit JAMAIS être en contact direct avec la maçonnerie froide. Placer impérativement de la laine de verre (ou un morceau d'isolant) DERRIÈRE les tuyaux pour les protéger du gel, ou les passer devant l'isolant selon la configuration. Détail à ne pas négliger.
+- BANDES À JOINT / ENDUIT (placo neuf) : sur du placo NEUF, on fait UNIQUEMENT les bandes à joint (pas d'enduit de lissage pleine surface sauf finition haut de gamme demandée). Procéder en 3 ou 4 PASSES.
+- Acheter l'enduit en SEAU (dire "seau d'enduit", jamais "boîte"). Bande à joint + enduit de joint : compter les seaux d'enduit nécessaires + les rouleaux de bande.
+- PAS de primaire fixateur pour appliquer de l'enduit sur du placo NEUF (le placo neuf n'a pas besoin de fixateur avant enduit/bandes). Le primaire/fixateur ne se justifie que sur un ancien support poreux ou farinant.
 - Joints placo (cycle strict) : 
   1) Rebouchage MAP sur les têtes de vis ISOLÉES UNIQUEMENT (vis en plein milieu des plaques, hors axes des bandes)
   2) PAS de MAP sur les vis dans l'axe des bandes de joints (elles seront chargées et noyées lors de l'application de la bande)
-  3) Gratter J+1
-  4) Coller bande + enduit (sécher complètement)
-  5) Deuxième passe charge (sécher)
-  6) Passe finition (sécher)
-  7) 4e passe si imperfection
+  3) Coller la bande de joint entre les plaques
+  4) Deuxième passe d'enduit sur les bandes ET les têtes de vis (sécher)
+  5) Troisième passe d'enduit sur les bandes et les vis (sécher)
+  6) 4e passe ou ratissage complet si nécessaire
+  (Même méthode pour les plafonds.)
+- DOUBLAGE DE MURS + PLAFOND : s'il y a doublage des murs, prévoir aussi les BANDES À JOINT au raccord mur/plafond selon le support. Et TOUJOURS prévoir de peindre le PLAFOND EN MÊME TEMPS que les murs (ne jamais séparer les deux : on peint plafond + murs dans la même phase).
+- ORDRE DE FERMETURE : rails posés → isolant inséré → réseaux tirés → fermeture en vissant les plaques sur l'ossature → puis enduisage (joints + vis).
 - Avant peinture : ponçage général + aspiration + dépoussiérage murs au balai serpillière humide
 
 CONNAISSANCES PLAFONDS/SOUS-SOLS :
@@ -1173,12 +1212,18 @@ CONNAISSANCES PLAFONDS/SOUS-SOLS :
 - Pour béton/ourdis : utiliser fixations spéciales adaptées au matériau pour les tiges filetées
 - Passer TOUS les réseaux plafond (spots, dérivations, plomberie) AVANT fermeture
 
+CONNAISSANCES PORTES (coulissantes / placard) :
+- Une porte coulissante (applique ou galandage), une porte de placard ou un bloc-porte de finition se POSE EN DERNIER : APRÈS le sol fini (parquet/revêtement posé) ET APRÈS la peinture terminée. Ne jamais poser la porte avant la peinture et le sol.
+- (Le dormant/bâti d'une porte battante classique, lui, se pose en même temps que la ferraille — mais une porte coulissante de finition se règle après sol + peinture.)
+
 CHRONOLOGIE GÉNÉRALE TRAVAUX :
 - Analyse + calepinage FIGÉ en premier (surtout cuisine/SdB)
 - Démolition + mise à nu (mobilier, sanitaires, papier peint, faïence, placo pourri)
 - Ordre obligatoire de reconstruction : 1) PLAFOND, 2) MURS (cloisons+doublages), 3) SOL (ragréage puis revêtement)
-- Blocs-portes posés en même temps que ferraille
+- Peinture (plafond + murs ensemble) AVANT pose du parquet/sol fini
+- Portes coulissantes / portes de placard posées EN DERNIER (après sol + peinture)
 - Avoir TOUTES les fiches techniques équipements AVANT chantier (sorties au mm près)
+
 
 ANCIEN CARRELAGE IMPOSSIBLE À DÉPOSER (3 options) :
 - Ragréer/enduire directement dessus
