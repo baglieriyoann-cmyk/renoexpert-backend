@@ -386,6 +386,87 @@ async function getCodeInsee(codePostal, nomCommune) {
 }
 
 // Interroge DVF et calcule le prix médian au m² pour MAISONS et APPARTEMENTS
+// Essaie plusieurs sources DVF dans l'ordre jusqu'à ce qu'une réponde.
+// Retourne un tableau de mutations normalisées {valeur, surface, type} ou null.
+async function fetchMutationsDVF(codePostal, codeInsee) {
+  // --- SOURCE 1 : micro-API cquest (filtre direct par code postal, simple et stable) ---
+  try {
+    const url = `http://api.cquest.org/dvf?code_postal=${codePostal}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    if (r.ok) {
+      const json = await r.json();
+      const recs = json.features || json.resultats || [];
+      const mutations = recs.map(f => {
+        const p = f.properties || f;
+        return {
+          valeur: parseFloat(p.valeur_fonciere),
+          surface: parseFloat(p.surface_relle_bati || p.surface_reelle_bati),
+          type: p.type_local
+        };
+      });
+      if (mutations.length > 0) {
+        console.log(`✅ DVF source1 (cquest) : ${mutations.length} mutations pour CP ${codePostal}`);
+        return mutations;
+      }
+    }
+  } catch (err) {
+    console.error('⚠️ DVF source1 (cquest) échec:', err.message);
+  }
+
+  // --- SOURCE 2 : API officielle data.economie.gouv.fr (DVF tabular, filtrable par code postal) ---
+  try {
+    const annees = ['2024', '2023'];
+    let toutes = [];
+    for (const annee of annees) {
+      const url = `https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/demandes-de-valeurs-foncieres-georeferencees/records`
+        + `?where=code_postal%3D%22${codePostal}%22%20AND%20(type_local%3D%22Maison%22%20OR%20type_local%3D%22Appartement%22)`
+        + `&select=valeur_fonciere,surface_reelle_bati,type_local&limit=100&refine=annee_mutation%3A%22${annee}%22`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+      if (r.ok) {
+        const json = await r.json();
+        const recs = json.results || [];
+        recs.forEach(m => toutes.push({
+          valeur: parseFloat(m.valeur_fonciere),
+          surface: parseFloat(m.surface_reelle_bati),
+          type: m.type_local
+        }));
+      }
+      if (toutes.length >= 40) break;
+    }
+    if (toutes.length > 0) {
+      console.log(`✅ DVF source2 (data.economie) : ${toutes.length} ventes pour CP ${codePostal}`);
+      return toutes;
+    }
+  } catch (err) {
+    console.error('⚠️ DVF source2 échec:', err.message);
+  }
+
+  // --- SOURCE 3 : API Etalab geo (par code commune INSEE) ---
+  if (codeInsee) {
+    try {
+      const url = `https://api.dvf.etalab.gouv.fr/mutations3?code_commune=${codeInsee}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+      if (r.ok) {
+        const json = await r.json();
+        const mutations = json.resultats || json.mutations || (Array.isArray(json) ? json : []);
+        if (Array.isArray(mutations) && mutations.length > 0) {
+          console.log(`✅ DVF source3 (etalab) : ${mutations.length} mutations pour INSEE ${codeInsee}`);
+          return mutations.map(m => ({
+            valeur: parseFloat(m.valeur_fonciere),
+            surface: parseFloat(m.surface_reelle_bati),
+            type: m.type_local
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('⚠️ DVF source3 échec:', err.message);
+    }
+  }
+
+  console.log(`❌ DVF : aucune source n'a répondu pour CP ${codePostal} / INSEE ${codeInsee}`);
+  return null;
+}
+
 async function getDVFData(codePostal, nomCommune) {
   if (!codePostal) return null;
   const cacheKey = String(codePostal);
@@ -393,21 +474,16 @@ async function getDVFData(codePostal, nomCommune) {
   if (cached && Date.now() < cached.expires) return cached.data;
 
   try {
+    // On récupère le code INSEE en parallèle (utile pour la source 2 et le nom de commune)
     const insee = await getCodeInsee(codePostal, nomCommune);
-    if (!insee) return null;
-
-    const url = `https://api.dvf.etalab.gouv.fr/mutations3?code_commune=${insee.code}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return null;
-    const json = await r.json();
-    const mutations = json.resultats || json.mutations || (Array.isArray(json) ? json : []);
-    if (!Array.isArray(mutations) || mutations.length === 0) return null;
+    const mutations = await fetchMutationsDVF(codePostal, insee ? insee.code : null);
+    if (!mutations || mutations.length === 0) return null;
 
     const prixM2ParType = { Maison: [], Appartement: [] };
     mutations.forEach(m => {
-      const valeur = parseFloat(m.valeur_fonciere);
-      const surface = parseFloat(m.surface_reelle_bati);
-      const type = m.type_local;
+      const valeur = m.valeur;
+      const surface = m.surface;
+      const type = m.type;
       if (!valeur || !surface || surface < 9) return;
       if (valeur < 10000 || valeur > 3000000) return;
       const prixM2 = valeur / surface;
@@ -416,11 +492,15 @@ async function getDVFData(codePostal, nomCommune) {
       else if (type === 'Appartement') prixM2ParType.Appartement.push(prixM2);
     });
 
+    const maisonMed = median(prixM2ParType.Maison);
+    const appartMed = median(prixM2ParType.Appartement);
+    if (!maisonMed && !appartMed) return null; // pas de données exploitables
+
     const result = {
-      commune: insee.nom,
-      code_insee: insee.code,
-      maison: { prix_m2_median: median(prixM2ParType.Maison), nb_ventes: prixM2ParType.Maison.length },
-      appartement: { prix_m2_median: median(prixM2ParType.Appartement), nb_ventes: prixM2ParType.Appartement.length },
+      commune: insee ? insee.nom : ('CP ' + codePostal),
+      code_insee: insee ? insee.code : null,
+      maison: { prix_m2_median: maisonMed, nb_ventes: prixM2ParType.Maison.length },
+      appartement: { prix_m2_median: appartMed, nb_ventes: prixM2ParType.Appartement.length },
       source: 'DVF (ventes reelles enregistrees, data.gouv.fr)'
     };
     dvfCache.set(cacheKey, { data: result, expires: Date.now() + DVF_CACHE_MS });
@@ -1517,6 +1597,55 @@ app.get('/', (req, res) => {
   res.json({ status: 'RénoExpert Backend v3.3 - Online' });
 });
 
+// Route de DIAGNOSTIC DVF : teste chaque source et renvoie le détail (pour debug)
+// Usage : ouvrir dans le navigateur https://...railway.app/api/dvf-test?cp=60280
+app.get('/api/dvf-test', async (req, res) => {
+  const cp = req.query.cp || '60200';
+  const commune = req.query.commune || '';
+  const diag = { code_postal: cp, commune, sources: {} };
+
+  // Test getCodeInsee
+  try {
+    const insee = await getCodeInsee(cp, commune);
+    diag.code_insee = insee;
+  } catch (e) { diag.code_insee_erreur = e.message; }
+
+  // Test source 1 : data.economie.gouv.fr
+  try {
+    const url = `https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/demandes-de-valeurs-foncieres-georeferencees/records?where=code_postal%3D%22${cp}%22&limit=2`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    diag.sources.data_economie = { status: r.status, ok: r.ok };
+    if (r.ok) { const j = await r.json(); diag.sources.data_economie.total = j.total_count; diag.sources.data_economie.exemple = (j.results || [])[0] || null; }
+  } catch (e) { diag.sources.data_economie = { erreur: e.message }; }
+
+  // Test source 2 : api.dvf.etalab.gouv.fr (par INSEE)
+  try {
+    const insee = diag.code_insee ? diag.code_insee.code : null;
+    if (insee) {
+      const url = `https://api.dvf.etalab.gouv.fr/mutations3?code_commune=${insee}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+      diag.sources.etalab = { status: r.status, ok: r.ok };
+      if (r.ok) { const j = await r.json(); const muts = j.resultats || j.mutations || (Array.isArray(j) ? j : []); diag.sources.etalab.nb = muts.length; diag.sources.etalab.exemple = muts[0] || null; }
+    } else { diag.sources.etalab = { skip: 'pas de code INSEE' }; }
+  } catch (e) { diag.sources.etalab = { erreur: e.message }; }
+
+  // Test source 3 : api.cquest.org
+  try {
+    const url = `http://api.cquest.org/dvf?code_postal=${cp}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    diag.sources.cquest = { status: r.status, ok: r.ok };
+    if (r.ok) { const j = await r.json(); diag.sources.cquest.nb = (j.features || j.resultats || []).length; }
+  } catch (e) { diag.sources.cquest = { erreur: e.message }; }
+
+  // Résultat final via la vraie fonction
+  try {
+    const result = await getDVFData(cp, commune);
+    diag.resultat_final = result;
+  } catch (e) { diag.resultat_final_erreur = e.message; }
+
+  res.json(diag);
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT NOW()');
@@ -1580,11 +1709,14 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
   for (const doc of extraDocs) content.push(fileToContent(doc));
 
   const hasAnyComment = Array.isArray(photoComments) && photoComments.some(c => c && c.trim());
-  if (hasAnyComment) {
-    content.push({
-      type: 'text',
-      text: "Chaque photo ci-dessous est précédée d'un libellé « Photo N ». Quand l'utilisateur a ajouté une annotation pour une photo, elle apparaît juste avant l'image (« Annotation utilisateur »). Ces annotations expriment l'intention/le projet pour la zone visible (ex : « agrandir cette chambre en deux ») — tu DOIS en tenir compte explicitement dans l'analyse de cette photo, chiffrer si c'est un projet de travaux, et le restituer dans le rapport."
-    });
+
+  // Instruction TOUJOURS présente : les photos sont numérotées, l'IA doit y faire référence par leur numéro
+  if (photos.length > 0) {
+    let instructionPhotos = `Les ${photos.length} photo(s) ci-dessous sont NUMÉROTÉES (« Photo 1 », « Photo 2 », etc.) dans l'ordre. RÈGLE IMPORTANTE : à chaque fois que tu décris un constat, un défaut ou un élément visible sur une image, tu DOIS citer le numéro de la photo concernée entre parenthèses (ex : « Fissure au plafond (Photo 3) », « Cuisine à rénover (Photos 2 et 5) »). Cela permet à l'utilisateur de savoir précisément de quelle photo tu parles.`;
+    if (hasAnyComment) {
+      instructionPhotos += ` Quand l'utilisateur a ajouté une annotation pour une photo, elle apparaît juste avant l'image (« Annotation utilisateur ») et exprime son intention/projet pour la zone (ex : « agrandir cette chambre en deux ») — tu DOIS en tenir compte explicitement, chiffrer si c'est un projet de travaux, et le restituer dans le rapport.`;
+    }
+    content.push({ type: 'text', text: instructionPhotos });
   }
 
   photos.forEach((photo, i) => {
