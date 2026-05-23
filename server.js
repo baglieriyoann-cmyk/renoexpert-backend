@@ -1127,10 +1127,38 @@ CONNAISSANCES TECHNIQUES CARRELAGE :
 - JOINTS classiques par défaut : 3 mm (pas 2 mm — trop fin pour le standard, sauf demande mosaïque ou rectifié spécifique)
 - CROISILLONS : à laisser en place JUSQU'AU SÉCHAGE COMPLET de la colle (24-48h). NE JAMAIS conseiller de "sortir les croisillons après 2h" — on ne marche pas sur un sol fraîchement carrelé. Les croisillons se retirent juste avant le jointoiement, sol et murs ensemble.
 - ORDRE DE POSE : 1) Carrelage AVEC plinthes ensemble (collées à la colle carrelage), 2) Joints simultanés sol + plinthes
+- PLINTHES : à prévoir SAUF si la faïence recouvre complètement les murs jusqu'au sol (la faïence vient toucher le sol sans espace).
 - Kit jointoiement (~30€, finition impeccable) : taloche caoutchouc, éponge spéciale joints, seau à rouleaux essoreurs
 - Outillage : scie trépan carrelage sur disqueuse, couteau enduire ou disqueuse 12V pour gratter surplus colle
 - ASPIRATION à chaque étape MAJEURE du chantier (fin de démolition, avant collage, avant peinture). NE JAMAIS écrire "aspirez après chaque coupe" ni "à chaque découpe" — perte de temps inutile sur chantier. La scie à eau capte la poussière, et un nettoyage en fin de phase suffit.
 - Vérification alignement règle/laser au fur et à mesure
+
+CONNAISSANCES TECHNIQUES DÉPOSE FAÏENCE (salle de bain / démolition) :
+- OUTIL RECOMMANDÉ : PERFORATEUR ÉLECTRIQUE + BURIN PLAT (mieux qu'une simple masse). C'est beaucoup plus efficace qu'une masse et outil manuel.
+- DIRECTION : de HAUT en BAS (contrairement à la théorie ancienne bas-en-haut). Cela prévient les effondrements de faïence et facilite l'évacuation des gravats.
+- TECHNIQUE : glisser le burin dans les joints, laisser le perfo travailler, avancer rangée par rangée en descendant.
+- SÉCURITÉ : masque FFP2 obligatoire (poussières de silice + faïence), gants, lunettes de protection.
+- La faïence se décolle par plaques une fois qu'on a libéré les joints.
+
+CONNAISSANCES NETTOYAGE JOINTS CARRELAGE (après pose, avant jointoiement) :
+- NE PAS utiliser l'air comprimé (enlève les croisillons, endommage les joints neufs).
+- MÉTHODE : éponge ou chiffon HUMIDE (microfibre type chiffon antistatique fonctionne très bien) + RIFLARD (racloir spécifique).
+- Nettoyer délicatement les joints pour éliminer la poussière et les résidus de colle AVANT de passer l'éponge pour le voile final.
+
+CONNAISSANCES SILICONE SANITAIRE (salle de bain) :
+- Silicone BLANC **UNIQUEMENT** dans les angles INTÉRIEURS MOBILES :
+  * Sol/mur de la douche (zone de mouvement)
+  * Mur/mur angles intérieurs de douche
+- PAS de silicone si c'est un bac à carreler en béton/ciment (le joint ciment suffit — pas besoin).
+- Si bac en céramique ou résine (léger, légèrement flexible) : mettre un petit cordon de silicone TRANSPARENT APRÈS les joints, par sécurité supplémentaire.
+- Silicone blanc sur vasque et bas de paroi de douche vitrée (zones de contact/étanchéité).
+- Règle : le silicone sert pour les **zones de dilatation/mouvement**, le joint ciment pour les zones stables.
+
+CONNAISSANCES SÉCURITÉ CARRELAGE :
+- Genouillères : PAS OBLIGATOIRES mais FORTEMENT CONSEILLÉES (genouillères de sport bien plus confortables que basiques).
+- Lunettes de protection pour la découpe carrelage (disqueuse, carrelette) et démolition.
+- Gants pour manipulation carreaux (tranches coupantes) et produits chimiques (primaire, étanchéité, colle).
+- Masque FFP2 lors de la démolition faïence et découpe à sec (silice, poussières minérales).
 
 CONNAISSANCES TECHNIQUES PEINTURE (quantités et prix — valeurs terrain à appliquer STRICTEMENT) :
 - CONSOMMATION peinture : 1 litre couvre 10 m² POUR UNE COUCHE.
