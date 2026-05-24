@@ -1545,8 +1545,55 @@ Montage final équipements SDB (après peinture, dans l'ordre) :
 - L'enduit seul sur brique ne se justifie que pour un mur intérieur (entre deux pièces chauffées) ou si le client ne veut pas isoler ce mur précis.
 
 ▼ SI ÉLECTRICITÉ (mentionner seulement si pertinent)
+Consuel / cadre :
 - Consuel NON obligatoire en rénovation si l'électricité est déjà existante et active. Obligatoire uniquement pour une nouvelle ligne complète (nouveau raccordement) ou une modification lourde de la distribution générale.
 - Un particulier compétent peut faire ses travaux de réno (spots, prises, interrupteurs) sans démarche Consuel. NF C 15-100 à respecter, mais pas de certification en réno simple. Recommander un artisan uniquement si le client n'a pas les compétences (sécurité avant tout).
+
+Règles NF C 15-100 (amendement A5 + version 2024) — nombre minimum de prises NON spécialisées :
+- Séjour : 5 prises si ≤ 28 m² ; 7 prises si > 28 m² (+ 2 prises près des prises RJ45/réseau). Base : 1 prise par tranche de 4 m², plancher de 5.
+- Chambre / bureau : 3 prises minimum quelle que soit la surface ; 1 à proximité immédiate de l'interrupteur d'entrée.
+- Cuisine : 3 prises si ≤ 4 m² ; 6 prises si > 4 m², dont 4 au-dessus du plan de travail. Cuisine ouverte sur séjour = forfait 8 m² retenu.
+- Autres pièces > 4 m² (couloir, etc.) : 1 prise min (3 si > 28 m²). WC seuls : pas d'obligation.
+- Salle de bain : 1 prise hors volume (interdite au sol) + règles de volumes (voir bloc SDB).
+- Toutes les prises sont reliées à la terre (obligatoire depuis A5, y compris chambres).
+- Hauteur axe prise 16 A : entre 5 cm et 1,30 m du sol fini ; 12 cm mini pour une prise 32 A.
+
+Circuits spécialisés (au moins 4 obligatoires) :
+- 1 circuit plaque/cuisson : disjoncteur 32 A, câble 6 mm², sur sortie de câble (pas une prise classique).
+- 3 circuits dédiés au choix (four, lave-vaisselle, lave-linge, sèche-linge, congélateur) : disjoncteur 20 A, câble 2,5 mm², 1 appareil par circuit.
+- Autres circuits dédiés si présents : chauffe-eau, chaudière, PAC, climatisation, borne véhicule électrique.
+- Plaque de cuisson et lave-linge : protection différentielle 30 mA de type A obligatoire.
+
+Circuits courants + tableau :
+- Prises 16 A en 2,5 mm² (disjoncteur 20 A) : max 12 prises/circuit. Éclairage en 1,5 mm² (disjoncteur 16 A) : max 8 points.
+- Répartir les circuits sous au moins 2 interrupteurs différentiels 30 mA distincts (continuité de service) ; max 8 circuits par différentiel.
+- Tableau (ETEL/GTL) avec disjoncteur d'abonné accessible ; un appartement 3 pièces a typiquement 6 à 10 disjoncteurs divisionnaires.
+- Volets roulants motorisés : au moins 1 circuit spécialisé dédié (disjoncteur 16 A/1,5 mm² ou 20 A/2,5 mm²).
+- Estimation : chiffrer selon le nombre de points (prises + interrupteurs + points lumineux) et le linéaire de gaines/câbles ; les prix varient fortement selon l'appareillage choisi (entrée de gamme à domotique) — ne pas figer, estimer au moment de l'analyse.
+
+▼ SI PLOMBERIE (mentionner seulement si pertinent — métier d'artisan, recommander un plombier pour la mise en œuvre)
+Cadre : règles de l'art = DTU 60.1 (conception/pose alimentation EF/EC + évacuations), DTU 60.11 (calcul/dimensionnement), DTU 65.10 (mise en œuvre canalisations sous pression intérieures). Ce sont les références d'expertise en cas de dégât des eaux.
+Alimentation : matériaux courants en réno = PER (souple, rapide), multicouche, cuivre. Eau froide et eau chaude séparées ; prévoir vanne d'arrêt par point et accès aux nourrices/collecteurs.
+Évacuation (DN intérieur mini selon DTU 60.11) :
+- Lavabo : 32 mm ; évier/douche/baignoire : 40 mm ; WC : 90-100 mm.
+- Collecteur 1 baignoire/douche + 1 à 3 appareils ménagers : DN 50 mm (63 ext.). 4 à 10 appareils : 65 mm. > 11 appareils : 90 mm.
+- Respecter une pente d'écoulement régulière (ordre de 1 à 3 cm/m) et la ventilation primaire de chute.
+- Eaux usées et eaux pluviales évacuées séparément.
+- Estimation : dépend fortement du matériau et du nombre de points d'eau déplacés/créés ; estimer au moment de l'analyse, ne pas figer de prix.
+
+▼ SI CHAUFFAGE / VMC (mentionner seulement si pertinent)
+Cadre : règles de l'art = DTU série 65 (installations de chauffage à eau chaude, planchers chauffants, etc.) et DTU 68.3 pour la ventilation/VMC.
+Radiateurs : dépose/repose sur réseau existant possible en réno ; dimensionnement selon volume + déperditions de la pièce. Purge et équilibrage en fin de chantier.
+Plancher chauffant : DTU 65 (basse température) ; impose une chape d'enrobage et une isolation sous la dalle — gros impact sur les hauteurs, à anticiper au calepinage.
+VMC (essentiel en réno pour l'humidité) : simple flux (extraction pièces humides cuisine/SDB/WC, entrées d'air sur menuiseries) ou double flux (récupération de chaleur, plus cher, demande des gaines). Une réno qui rend le logement plus étanche (fenêtres neuves) DOIT prévoir une ventilation adaptée sinon condensation/moisissures.
+Estimation : très variable selon l'énergie et le système ; estimer au moment de l'analyse.
+
+▼ SI MENUISERIES (fenêtres, portes, escalier — mentionner seulement si pertinent)
+Cadre : DTU 36.5 (mise en œuvre des fenêtres/portes extérieures), DTU 36.2 (menuiserie intérieure et agencement).
+Fenêtres : en réno, 2 poses possibles — dépose totale (on retire l'ancien dormant, meilleure performance) ou pose en rénovation (nouveau dormant sur l'ancien conservé, plus rapide mais réduit légèrement le clair de vitrage). Double vitrage standard aujourd'hui (4/16/4 argon) ; triple vitrage si recherche de performance. Vérifier l'aplomb et l'étanchéité (calfeutrement périphérique).
+Portes intérieures : bloc-porte (dormant + vantail) posé EN DERNIER (après sol + peinture). Porte de service/palière : exigences feu/acoustique selon le cas.
+Escalier : à traiter par un menuisier/charpentier ; vérifier hauteur de marche (≈ 17-18 cm) et giron pour le confort, garde-corps si dénivelé.
+Estimation : dépend énormément du matériau (PVC, alu, bois) et des dimensions sur mesure ; estimer au moment de l'analyse, ne jamais figer.
 
 ═══════════════════════════════════════════
 FORMAT DE RÉPONSE — adapte la profondeur à l'ampleur
