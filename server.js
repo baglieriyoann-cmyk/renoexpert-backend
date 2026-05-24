@@ -853,17 +853,42 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   const nbProjets = parseInt(countResult.rows[0].count);
   const nbAnalyses = parseInt(req.user.nb_analyses || 0);
   const limite = req.user.plan === 'illimite' ? null : LIMITE_ANALYSES_GRATUIT;
-  
+  const estIllimite = req.user.plan === 'illimite';
+
+  // Détail du quota PAR MODE (pour afficher les analyses restantes sur chaque carte)
+  let quotaParMode = {};
+  try {
+    const r = await pool.query(
+      'SELECT mode, nb_analyses FROM analyses_par_mode WHERE user_id = $1',
+      [req.user.id]
+    );
+    const utilisesParMode = {};
+    r.rows.forEach(row => { utilisesParMode[row.mode] = parseInt(row.nb_analyses || 0); });
+    Object.keys(LIMITES_PAR_MODE).forEach(mode => {
+      const lim = LIMITES_PAR_MODE[mode];
+      const used = utilisesParMode[mode] || 0;
+      quotaParMode[mode] = {
+        utilises: used,
+        limite: lim,
+        restant: estIllimite ? null : Math.max(0, lim - used),
+        illimite: estIllimite
+      };
+    });
+  } catch (err) {
+    console.error('⚠️ quota_par_mode échec:', err.message);
+  }
+
   res.json({
     success: true,
     user: req.user,
     quota: {
       utilises: nbAnalyses,
       limite: limite,
-      illimite: req.user.plan === 'illimite',
+      illimite: estIllimite,
       type: 'analyses',
       nb_projets: nbProjets
-    }
+    },
+    quota_par_mode: quotaParMode
   });
 });
 
@@ -1203,6 +1228,23 @@ RÈGLES STRICTES :
   * « Ne pas retirer les croisillons avant 24h » → écrire « Laissez les croisillons en place jusqu'au séchage complet (24-48h), retrait au moment du jointoiement »
   Le client final lit le document : il veut des consignes claires, pas des justifications de règles métier.
 
+PRIX DE RÉFÉRENCE MATÉRIAUX (relevés Point P, région Oise, mai 2026 — prix TTC, à utiliser comme base réaliste) :
+IMPORTANT : tous les prix donnés à l'utilisateur sont en TTC (TVA 20% incluse). Ces prix sont des références fiables relevées en magasin, utilise-les en priorité plutôt que des estimations vagues.
+- Plaque de plâtre BA13 standard : ~7,20 €/m² TTC (soit ~22 € la plaque de 2,60x1,20 m = 3,12 m²).
+- Montant métallique M48 : ~1,30 €/ml TTC.
+- Rail R48 : ~1,30 €/ml TTC.
+- Vis TTPC placo (boîte de 1000) : ~11 € TTC la boîte.
+- Mortier adhésif MAP (sac 25 kg) : ~14 € TTC.
+- Enduit de joint en poudre (sac/seau 25 kg) : ~26 à 30 € TTC.
+- Bande à joint papier microperforée : rouleau de 150 ml ~8 € TTC (compter les bandes en rouleaux de 150 ml).
+- Bande à joint armée pour angles : rouleau 30 ml ~18 € TTC.
+- Laine de verre GR32 100 mm (murs, revêtue kraft) : ~13 €/m² TTC (rouleau de ~3,24 m² ~42 € TTC).
+- Laine de verre GR32 120 mm : ~14 €/m² TTC.
+- Laine Isoconfort 35 - 160 mm (rampants) : ~15 €/m² TTC (rouleau 4,44 m² ~68 € TTC).
+- Laine Isoconfort 35 - 240 mm (rampants, réno idéale) : ~23 €/m² TTC (rouleau 3,12 m² ~72 € TTC).
+- Ces prix servent de base ; ajuster légèrement selon gamme/région mais rester dans ces ordres de grandeur réalistes.
+- Toujours ajouter un surplus (chutes, casses) et arrondir aux conditionnements réels vendus.
+
 CONNAISSANCES TECHNIQUES CARRELAGE :
 - Ragréage : 1.7 kg/m²/mm d'épaisseur
 - Colle carrelage C2 : 1 sac 25kg pour 5 m² (simple encollage) ou 4 m² (double encollage pour grands formats > 30x30 cm)
@@ -1258,25 +1300,29 @@ CONNAISSANCES TECHNIQUES PEINTURE (quantités et prix — valeurs terrain à app
 PROCÉDURE DE MISE EN PEINTURE SELON LE SUPPORT (à appliquer STRICTEMENT) :
 
 A) CAS DU PLACO NEUF (murs ET plafonds) — cycle des enduits/bandes :
-  1) Rebouchage : boucher UNIQUEMENT les trous de vis au MAP (mortier adhésif).
-  2) Collage des bandes de joints entre les plaques.
+  1) Rebouchage : boucher UNIQUEMENT les trous de vis au MAP (mortier adhésif), une noisette par vis bien ras.
+  2) Collage des bandes de joints entre les plaques (noyées dans une 1ère passe d'enduit).
   3) Deuxième passe d'enduit sur les bandes ET sur les têtes de vis.
-  4) Troisième passe d'enduit sur les bandes et sur les vis.
-  5) Si nécessaire : quatrième passe ou ratissage complet du mur.
+  4) Troisième passe d'enduit plus fine sur les bandes et les vis ; quatrième si nécessaire.
   (Même méthode pour les plafonds.)
+  - PONÇAGE : on ne ponce PAS systématiquement entre chaque passe. On ponce surtout à la fin (ou si une passe est mal faite). GRAIN : JAMAIS 120 (trop agressif, raye) — minimum 150, idéal 180. Les petits surplus d'enduit (ex : bandes armées d'angle) peuvent être simplement GRATTÉS au couteau à enduire plutôt que poncés.
+  - Inutile de répéter dans le rapport "pas d'enduit pleine surface sur placo neuf" : la procédure parle d'elle-même. (Un ratissage pleine surface reste possible pour une finition haut de gamme, mais plus cher et plus long.)
   Puis : sous-couche acrylique générale, puis 2 couches de finition.
 
 B) CAS DES MURS ANCIENS (maçonnerie, plâtre ancien) :
   1) Préparation mécanique : ponçage + dépoussiérage minutieux, vérifier l'état du mur.
   2) Impression : appliquer une sous-couche de peinture GLYCÉRO directement sur le support pour FIXER/BLOQUER le fond ancien.
-  3) Enduisage général en passes CROISÉES + retouches.
-  4) RÈGLE SYSTÉMATIQUE : chaque couche d'enduit doit être PONCÉE après séchage.
-  5) Une fois propre et poncé : sous-couche acrylique générale.
-  6) Contrôle final : si retouches d'enduit à ce stade, les poncer puis recouvrir LOCALEMENT de sous-couche sur les zones retouchées (évite les "spectres"/traces).
+  3) Enduisage général en passes CROISÉES + retouches. Poncer après séchage au grain 150-180 (jamais 120).
+  4) Une fois propre et poncé : sous-couche acrylique générale.
+  5) Contrôle final : si retouches d'enduit à ce stade, les poncer puis recouvrir LOCALEMENT de sous-couche sur les zones retouchées (évite les "spectres"/traces).
 
 C) FINITION (commune) : le nombre de passes dépend de la teinte :
   - Finition BLANC : 2 couches de finition blanc.
   - Finition COULEUR : 2 couches de la couleur choisie.
+  - ORDRE DE PEINTURE d'une pièce (surtout combles/rampants) : TOUJOURS le PLAFOND en premier, PUIS les rampants, PUIS les murs verticaux. (Ne pas commencer par les rampants.)
+  - Ne PAS écrire de phrase du type "Peinture d'abord, parquet ensuite" : l'ordre des étapes du guide le montre déjà, c'est redondant.
+
+D) CONTENANTS PEINTURE : ne JAMAIS proposer de pot de 1 L. Utiliser uniquement les conditionnements réels du marché : 2,5 L, 5 L ou 10 L. Si le besoin est juste au-dessus d'un format, passer à la taille au-dessus.
 
 CONNAISSANCES TECHNIQUES ENDUIT (quantités et prix — valeurs terrain à appliquer STRICTEMENT) :
 - DISTINCTION ESSENTIELLE :
@@ -1326,6 +1372,44 @@ CONNAISSANCES PLAFONDS/SOUS-SOLS :
   * Plafond BÉTON (dalle, ourdis/entrevous) : cavaliers pivot + tiges filetées + clips fourrures (JAMAIS de suspentes sur béton)
 - Pour béton/ourdis : utiliser fixations spéciales adaptées au matériau pour les tiges filetées
 - Passer TOUS les réseaux plafond (spots, dérivations, plomberie) AVANT fermeture
+
+CONNAISSANCES ISOLATION DES COMBLES / RAMPANTS (travail d'EXPERT ou plaquiste) :
+- L'isolation des rampants est un travail TECHNIQUE : préciser qu'il vaut mieux être bricoleur très confirmé, expert ou plaquiste.
+- ÉPAISSEURS (laine type Isover Isoconfort) : 60 mm entre chevrons + 160 mm minimum en couche croisée (sous chevrons). En rénovation, 240 mm est l'idéal (R élevé).
+- OSSATURE RAMPANT : ferrailler TOUT le rampant. Créer un CHEVÊTRE autour du velux. Utiliser SUSPENTES + FOURRURES. Lisse OPTIMA pour l'encadrement du velux. Raccords de fourrure pour rallonger si trop courtes.
+- ESPACEMENTS : une suspente tous les 1,20 ml sur la même longueur de fourrure (ou moins). Écart entre fourrures = 58 cm (pour insérer des rouleaux de laine coupés en 60 cm qui se touchent bien derrière les fourrures, sans pont thermique).
+- PARE-VAPEUR : côté kraft de la laine TOUJOURS orienté vers l'intérieur de la pièce (vers soi). Laisser une lame d'air de 2 cm min entre laine et couverture (ne pas bourrer contre la toiture).
+
+CONNAISSANCES RAILS / MONTANTS (choix d'épaisseur) :
+- DOUBLAGE de mur courant : rail/montant 48 mm (M48/R48). C'est le standard.
+- Rail 70 mm (M70/R70) : UNIQUEMENT pour cloisons plus épaisses devant recevoir plus d'isolant, ou très grande hauteur. Ne pas proposer du 70 pour un simple doublage.
+
+CONNAISSANCES TYPE DE LAINE / ISOLANT MUR :
+- Mur (doublage) : laine GR32 100 mm (type Isover GR32, dispo Point P) ou plus selon performance voulue. Le "100 mm" murs = GR32 100.
+- Pour les rampants : laine type Isoconfort (35) en épaisseurs 60/160/240 comme ci-dessus.
+
+CONNAISSANCES TYPE DE PLAQUE DE PLÂTRE (selon la pièce) :
+- Chambre / pièce sèche : placo CLASSIQUE blanc (BA13 standard).
+- Salle de bain / pièce humide : placo HYDROFUGE (vert/bleu selon marque).
+- Derrière un poêle à granulés / bois : placo FEU (Placoflam / plaque ROSE).
+- Pour réduire le bruit : placo PHONIQUE.
+- Choisir le type en fonction de l'usage réel de la pièce indiqué par l'utilisateur.
+
+CONNAISSANCES MUR EXTÉRIEUR EN BRIQUE (isolation) :
+- Un mur en brique qui donne sur l'EXTÉRIEUR est un mur À ISOLER (pas seulement à enduire). Si l'utilisateur demande d'isoler la pièce, NE PAS se contenter d'un enduit sur le mur brique : prévoir rail + montant (48) + laine GR32 100 mm (ou plus) + placo, comme pour un doublage vertical classique.
+- TOUJOURS prévoir l'isolant sur TOUS les murs donnant sur l'extérieur quand la demande est d'isoler la pièce.
+- L'enduit sur brique ne se justifie que pour un mur INTÉRIEUR (entre deux pièces chauffées) ou si l'utilisateur ne veut pas isoler ce mur précis.
+
+CONNAISSANCES COUPES PLACO :
+- Coupes DROITES : règle + cutter avec une bonne lame (inciser le carton, casser, couper le carton arrière).
+- Coupes COMPLEXES (formes, arrondis) : scie à guichet (scie égoïne pointue).
+- TROUS (spots, prises, tuyaux) : scie trépan à placo.
+- TOUJOURS RABOTER les coupes (rabot Surform) pour ébavurer le bord avant pose — ne pas l'oublier.
+
+CONNAISSANCES SOL — ANCIEN PLANCHER BOIS :
+- Sur un ancien PLANCHER BOIS : ÉVITER le ragréage (pose complexe, risque de fissure/casse si support mal préparé ou qui travaille). Ne pas le préconiser à un non-professionnel.
+- À la place : vérifier l'aplomb/planéité à la règle, fixer les lames qui bougent, et choisir une bonne SOUS-COUCHE adaptée.
+- Par défaut, si l'utilisateur ne précise pas un autre type de parquet, préconiser du PARQUET FLOTTANT : c'est le plus facile à poser et le terme que tout le monde connaît.
 
 CONNAISSANCES PORTES (coulissantes / placard) :
 - Une porte coulissante (applique ou galandage), une porte de placard ou un bloc-porte de finition se POSE EN DERNIER : APRÈS le sol fini (parquet/revêtement posé) ET APRÈS la peinture terminée. Ne jamais poser la porte avant la peinture et le sol.
