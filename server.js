@@ -181,7 +181,12 @@ async function initDB() {
         last_login TIMESTAMP
       )
     `);
-    
+
+    // Colonnes SIRET (vérification pro pour modes agent / marchand)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS siret VARCHAR(14)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS siret_raison_sociale VARCHAR(255)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS siret_verifie_at TIMESTAMP`);
+
     // Table feedbacks (mise à jour avec user_id INT pour lier aux comptes)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS feedbacks (
@@ -610,7 +615,7 @@ async function requireAuth(req, res, next) {
   
   try {
     const result = await pool.query(
-      'SELECT id, email, nom, plan, nb_analyses FROM users WHERE session_token = $1 AND session_expires > NOW()',
+      'SELECT id, email, nom, plan, nb_analyses, siret FROM users WHERE session_token = $1 AND session_expires > NOW()',
       [token]
     );
     
@@ -676,7 +681,97 @@ async function checkAnalysesQuota(req, res, next) {
   next();
 }
 
-// Incrémente le compteur d'analyses APRÈS un appel IA réussi (global + par mode).
+// ============================================================
+// VÉRIFICATION SIRET (modes pro : agent / marchand)
+// ============================================================
+// 1) Contrôle de format + clé de Luhn (toujours appliqué, instantané, hors-ligne)
+function validerSiretFormat(siret) {
+  if (!siret) return false;
+  const s = String(siret).replace(/\s/g, '');
+  if (!/^\d{14}$/.test(s)) return false;
+  // Clé de Luhn sur les 14 chiffres
+  let somme = 0;
+  for (let i = 0; i < 14; i++) {
+    let chiffre = parseInt(s[i], 10);
+    // Les positions paires (en partant de la droite, i pair depuis la gauche sur 14 chiffres) sont doublées
+    if (i % 2 === 0) {
+      chiffre *= 2;
+      if (chiffre > 9) chiffre -= 9;
+    }
+    somme += chiffre;
+  }
+  return somme % 10 === 0;
+}
+
+// 2) Vérification réelle via l'API Sirene de l'INSEE (api.insee.fr/api-sirene/3.11).
+//    Authentification par simple clé API dans le header X-INSEE-Api-Key-Integration.
+//    S'active uniquement si INSEE_API_KEY est configurée.
+//    Renvoie { ok, etablissement_actif, raison_sociale } ou { ok:false, raison }.
+async function verifierSiretInsee(siret) {
+  const s = String(siret).replace(/\s/g, '');
+  // Format d'abord (gratuit, instantané)
+  if (!validerSiretFormat(s)) {
+    return { ok: false, raison: 'format', message: 'Numéro SIRET invalide (14 chiffres attendus).' };
+  }
+  // Si la clé INSEE n'est pas configurée, on accepte sur la base du format (mode bêta dégradé)
+  const apiKey = process.env.INSEE_API_KEY;
+  if (!apiKey) {
+    return { ok: true, etablissement_actif: null, raison_sociale: null, source: 'format_only' };
+  }
+  // Appel API Sirene établissement
+  try {
+    const base = process.env.INSEE_SIRENE_URL || 'https://api.insee.fr/api-sirene/3.11';
+    const r = await fetch(`${base}/siret/${s}`, {
+      headers: {
+        'X-INSEE-Api-Key-Integration': apiKey,
+        'Accept': 'application/json'
+      }
+    });
+    if (r.status === 404) {
+      return { ok: false, raison: 'introuvable', message: 'Ce SIRET n\'existe pas au répertoire Sirene.' };
+    }
+    if (r.status === 401 || r.status === 403) {
+      // Problème de clé : on ne bloque pas un vrai pro, on retombe sur le format
+      console.error('⚠️ INSEE clé refusée HTTP', r.status);
+      return { ok: true, etablissement_actif: null, raison_sociale: null, source: 'format_fallback' };
+    }
+    if (!r.ok) {
+      console.error('⚠️ INSEE Sirene HTTP', r.status);
+      return { ok: true, etablissement_actif: null, raison_sociale: null, source: 'format_fallback' };
+    }
+    const data = await r.json();
+    const etab = data.etablissement || {};
+    const periodes = etab.periodesEtablissement || [];
+    // La période en vigueur a dateFin = null ; sinon on prend la première
+    const courante = periodes.find(p => p.dateFin === null) || periodes[0] || {};
+    const actif = courante.etatAdministratifEtablissement === 'A';
+    const ul = etab.uniteLegale || {};
+    const raison = ul.denominationUniteLegale
+      || [ul.prenom1UniteLegale, ul.nomUniteLegale].filter(Boolean).join(' ').trim()
+      || null;
+    if (!actif) {
+      return { ok: false, raison: 'ferme', message: 'Cet établissement est fermé au répertoire Sirene.' };
+    }
+    return { ok: true, etablissement_actif: true, raison_sociale: raison, source: 'insee' };
+  } catch (e) {
+    console.error('⚠️ INSEE Sirene appel échec:', e.message);
+    return { ok: true, etablissement_actif: null, raison_sociale: null, source: 'format_fallback' };
+  }
+}
+
+// Middleware : bloque les modes pro (agent / marchand) si le compte n'a pas de SIRET validé.
+// L'admin ('illimite') passe toujours.
+async function requireSiret(req, res, next) {
+  if (req.user.plan === 'illimite') return next();
+  const mode = getModeFromReq(req);
+  if (mode !== 'agent' && mode !== 'marchand') return next(); // seuls agent/marchand sont concernés
+  if (req.user.siret && validerSiretFormat(req.user.siret)) return next();
+  return res.status(403).json({
+    error: 'Ce mode est réservé aux professionnels. Renseignez votre numéro SIRET pour y accéder.',
+    code: 'SIRET_REQUIS',
+    mode: mode
+  });
+}
 async function incrementAnalysesCounter(userId, mode) {
   try {
     await pool.query(
@@ -881,6 +976,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   res.json({
     success: true,
     user: req.user,
+    siret: req.user.siret || null,
     quota: {
       utilises: nbAnalyses,
       limite: limite,
@@ -890,6 +986,36 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     },
     quota_par_mode: quotaParMode
   });
+});
+
+// ============================================================
+// SIRET — Vérification + enregistrement (accès modes pro)
+// ============================================================
+app.post('/api/siret/verifier', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const siretRaw = (req.body.siret || '').toString().replace(/\s/g, '');
+    if (!validerSiretFormat(siretRaw)) {
+      return res.status(400).json({ ok: false, code: 'FORMAT', error: 'Numéro SIRET invalide (14 chiffres requis).' });
+    }
+    const verif = await verifierSiretInsee(siretRaw);
+    if (!verif.ok) {
+      return res.status(400).json({ ok: false, code: (verif.raison || 'INVALIDE').toUpperCase(), error: verif.message || 'SIRET non valide.' });
+    }
+    // Enregistre sur le compte
+    await pool.query(
+      'UPDATE users SET siret = $1, siret_raison_sociale = $2, siret_verifie_at = NOW() WHERE id = $3',
+      [siretRaw, verif.raison_sociale || null, req.user.id]
+    );
+    res.json({
+      ok: true,
+      siret: siretRaw,
+      raison_sociale: verif.raison_sociale || null,
+      source: verif.source || 'format'
+    });
+  } catch (err) {
+    console.error('Erreur vérification SIRET:', err);
+    res.status(500).json({ ok: false, error: 'Erreur serveur lors de la vérification.' });
+  }
 });
 
 // ============================================================
@@ -1987,7 +2113,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2019,7 +2145,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
   }
 });
 
-app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2090,7 +2216,7 @@ app.post('/api/refine/reparation', aiLimiter, requireAuth, checkAnalysesQuota, a
 });
 
 // Génère des annonces immobilières (LeBonCoin, SeLoger, réseaux) à partir d'une analyse existante
-app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/annonce', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
   try {
     const { analysis, surface, location, infos } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante pour générer l\'annonce' });
@@ -2113,7 +2239,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
   }
 });
 
-app.post('/api/refine/agent', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2127,7 +2253,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, checkAnalysesQuota, async 
   }
 });
 
-app.post('/api/refine/marchand', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
