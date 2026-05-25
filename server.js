@@ -772,6 +772,19 @@ async function requireSiret(req, res, next) {
     mode: mode
   });
 }
+
+// Affinement réservé à la version payante (et à l'admin).
+// En gratuit : 1 analyse sèche, pas d'affinement. Les 3 affinements gratuits
+// seront un avantage des formules payantes (à activer avec les paiements).
+function requirePaidForRefine(req, res, next) {
+  if (req.user.plan === 'illimite') return next();      // admin : libre
+  if (req.user.plan && req.user.plan !== 'gratuit') return next(); // payant : libre (gestion des 3 gratuits à venir)
+  return res.status(403).json({
+    error: "L'affinement est réservé à la version complète. En version d'essai, chaque analyse est unique.",
+    code: 'REFINE_RESERVE_PAYANT',
+    mode: getModeFromReq(req)
+  });
+}
 async function incrementAnalysesCounter(userId, mode) {
   try {
     await pool.query(
@@ -2234,7 +2247,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
 // ROUTES D'AFFINEMENT (sans photos, sur la base d'une analyse précédente)
 // ============================================================
 
-app.post('/api/refine/visite', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/visite', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2248,7 +2261,7 @@ app.post('/api/refine/visite', aiLimiter, requireAuth, checkAnalysesQuota, async
   }
 });
 
-app.post('/api/refine/reparation', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/reparation', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2286,7 +2299,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, requireSiret, checkAnalysesQuot
   }
 });
 
-app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2300,7 +2313,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, checkAnalyse
   }
 });
 
-app.post('/api/refine/marchand', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, requireSiret, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
