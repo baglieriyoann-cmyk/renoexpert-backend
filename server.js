@@ -315,6 +315,22 @@ async function initDB() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_questionnaires_user ON questionnaires(user_id)`);
 
+    // Table LISTE D'ATTENTE — prospects intéressés par la future version payante.
+    // Permet de mesurer la demande réelle et de fixer le prix juste avant d'ouvrir les paiements.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS liste_attente (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        email VARCHAR(255) NOT NULL,
+        mode VARCHAR(50),
+        prix_souhaite VARCHAR(100),
+        frequence VARCHAR(100),
+        commentaire TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_liste_attente_email ON liste_attente(email)`);
+
     console.log('✅ Base de données initialisée');
   } catch (err) {
     console.error('❌ Erreur init DB:', err.message);
@@ -2576,13 +2592,68 @@ app.post('/api/questionnaire', generalLimiter, requireAuth, async (req, res) => 
   }
 });
 
-// Route admin : voir les prospects et questionnaires
+// LISTE D'ATTENTE : prospects intéressés par la future version payante.
+// Accessible aux utilisateurs connectés ET aux visiteurs (pas de requireAuth ici, on accepte tout
+// email valide — l'objectif est de mesurer la demande, pas de filtrer).
+app.post('/api/liste-attente', generalLimiter, async (req, res) => {
+  try {
+    const { email, mode, prix_souhaite, frequence, commentaire } = req.body;
+    const emailClean = (email || '').toString().trim().toLowerCase();
+    if (!emailClean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean)) {
+      return res.status(400).json({ error: 'Email invalide.' });
+    }
+    // Si l'utilisateur est authentifié, on lie le user_id (sinon null)
+    let userId = null;
+    try {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      if (token) {
+        const u = await pool.query(
+          'SELECT id FROM users WHERE session_token = $1 AND session_expires > NOW()',
+          [token]
+        );
+        if (u.rows.length) userId = u.rows[0].id;
+      }
+    } catch (e) { /* on continue sans user_id */ }
+
+    await pool.query(
+      `INSERT INTO liste_attente (user_id, email, mode, prix_souhaite, frequence, commentaire)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, emailClean, mode || null,
+       (prix_souhaite || '').toString().slice(0, 100) || null,
+       (frequence || '').toString().slice(0, 100) || null,
+       (commentaire || '').toString().slice(0, 1000) || null]
+    );
+    // Notif admin (utile pour réagir vite à un prospect chaud)
+    if (NOTIFICATION_EMAIL) {
+      sendEmail(
+        NOTIFICATION_EMAIL,
+        '⭐ Nouvelle inscription liste d\'attente RénoExpert',
+        `<p>Un prospect s'est inscrit à la liste d'attente :</p>
+         <ul>
+           <li><b>Email :</b> ${emailClean}</li>
+           <li><b>Profil/mode :</b> ${mode || '-'}</li>
+           <li><b>Prix souhaité :</b> ${prix_souhaite || '-'}</li>
+           <li><b>Fréquence d'usage :</b> ${frequence || '-'}</li>
+           <li><b>Commentaire :</b> ${commentaire || '-'}</li>
+         </ul>`
+      ).catch(e => console.error('⚠️ Email liste attente échec:', e.message));
+    }
+    res.json({ success: true, message: 'Merci ! On vous prévient dès l\'ouverture.' });
+  } catch (error) {
+    console.error('Erreur liste-attente:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Route admin : voir les prospects, questionnaires et liste d'attente
 app.get('/api/admin/prospects', requireAuth, async (req, res) => {
   if (req.user.plan !== 'illimite') return res.status(403).json({ error: 'Accès réservé admin' });
   try {
     const prospects = await pool.query('SELECT email, mode, created_at FROM prospects ORDER BY created_at DESC LIMIT 500');
     const questionnaires = await pool.query('SELECT mode, utilite, precision_estim, pret_a_payer, prix_juste, amelioration, recommander, user_email, created_at FROM questionnaires ORDER BY created_at DESC LIMIT 500');
-    res.json({ prospects: prospects.rows, questionnaires: questionnaires.rows });
+    const liste_attente = await pool.query('SELECT email, mode, prix_souhaite, frequence, commentaire, created_at FROM liste_attente ORDER BY created_at DESC LIMIT 500');
+    res.json({ prospects: prospects.rows, questionnaires: questionnaires.rows, liste_attente: liste_attente.rows });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
