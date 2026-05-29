@@ -760,6 +760,7 @@ async function getNbAnalysesMode(userId, mode) {
 // Récupère le coût en crédits selon le type d'analyse
 function getCreditCost(req) {
   if (req.path.includes('/api/analyze/express')) return CREDIT_COSTS.express;
+  if (req.path.includes('/api/refine/express')) return CREDIT_COSTS.express;
   if (req.path.includes('/api/analyze/reparation')) return CREDIT_COSTS.reparation;
   if (req.path.includes('/api/annonce')) return CREDIT_COSTS.annonce;
   return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
@@ -2549,6 +2550,20 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, requirePaidForRefine, chec
     res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
     console.error('Erreur refine agent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/refine/express', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+  try {
+    const { previousAnalysis, instructions, description } = req.body;
+    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
+    const context = description ? `Description initiale : ${description}\n\n` : '';
+    const analysis = await refineWithClaude(PROMPTS.express, previousAnalysis, instructions, context);
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
+    res.json({ success: true, analysis });
+  } catch (error) {
+    console.error('Erreur refine express:', error);
     res.status(500).json({ error: error.message });
   }
 });
