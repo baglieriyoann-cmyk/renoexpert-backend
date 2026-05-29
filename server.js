@@ -148,11 +148,10 @@ const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://renoexpert.fr').repla
 // ============================================================
 // Coût en crédits par type d'analyse
 const CREDIT_COSTS = {
-  express:    1,   // Chiffrage Express (prompt court)
-  reparation: 2,   // Travaux & Réparations (rapport complet sans investissement)
-  complet:    3,   // Rapport Complet agent/visite/marchand
-  annonce:    1,   // Génération d'annonce immobilière
-  default:    1    // fallback
+  express:  1,   // Chiffrage Express (prompt court)
+  complet:  3,   // Rapport Complet (prompt actuel v3.37)
+  annonce:  1,   // Génération d'annonce immobilière
+  default:  1    // fallback
 };
 // Crédits offerts à l'inscription (bêta)
 const CREDITS_BETA = 3;
@@ -245,7 +244,6 @@ async function initDB() {
       END $$;
     `);
     
-    await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS bien_id INTEGER`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_projets_user ON projets(user_id, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_token)`);
@@ -408,9 +406,6 @@ async function initDB() {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_liste_attente_email ON liste_attente(email)`);
-
-    // Migration : colonne dpe_classe sur la table biens
-    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS dpe_classe VARCHAR(1)`);
 
     console.log('✅ Base de données initialisée');
   } catch (err) {
@@ -760,8 +755,6 @@ async function getNbAnalysesMode(userId, mode) {
 // Récupère le coût en crédits selon le type d'analyse
 function getCreditCost(req) {
   if (req.path.includes('/api/analyze/express')) return CREDIT_COSTS.express;
-  if (req.path.includes('/api/refine/express')) return CREDIT_COSTS.express;
-  if (req.path.includes('/api/analyze/reparation')) return CREDIT_COSTS.reparation;
   if (req.path.includes('/api/annonce')) return CREDIT_COSTS.annonce;
   return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
 }
@@ -1151,11 +1144,11 @@ app.get('/api/biens', requireAuth, async (req, res) => {
 
 app.post('/api/biens', requireAuth, async (req, res) => {
   try {
-    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe } = req.body;
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes } = req.body;
     const r = await pool.query(
-      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '', dpe_classe || null]
+      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '']
     );
     res.json({ success: true, bien: r.rows[0] });
   } catch (err) {
@@ -1177,14 +1170,14 @@ app.get('/api/biens/:id', requireAuth, async (req, res) => {
 
 app.put('/api/biens/:id', requireAuth, async (req, res) => {
   try {
-    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute, dpe_classe } = req.body;
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute } = req.body;
     const r = await pool.query(
       `UPDATE biens SET adresse=$1, type_bien=$2, surface=$3, nb_niveaux=$4, date_visite=$5, notes=$6,
        rapport_complet=COALESCE($7, rapport_complet), fourchette_basse=COALESCE($8, fourchette_basse),
-       fourchette_haute=COALESCE($9, fourchette_haute), dpe_classe=COALESCE($10, dpe_classe), updated_at=NOW()
-       WHERE id=$11 AND user_id=$12 RETURNING *`,
+       fourchette_haute=COALESCE($9, fourchette_haute), updated_at=NOW()
+       WHERE id=$10 AND user_id=$11 RETURNING *`,
       [adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet || null,
-       fourchette_basse || null, fourchette_haute || null, dpe_classe || null, req.params.id, req.user.id]
+       fourchette_basse || null, fourchette_haute || null, req.params.id, req.user.id]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'Bien non trouvé' });
     res.json({ success: true, bien: r.rows[0] });
@@ -2414,7 +2407,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2446,7 +2439,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
   }
 });
 
-app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2517,7 +2510,7 @@ app.post('/api/refine/reparation', aiLimiter, requireAuth, requirePaidForRefine,
 });
 
 // Génère des annonces immobilières (LeBonCoin, SeLoger, réseaux) à partir d'une analyse existante
-app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
+app.post('/api/annonce', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
   try {
     const { analysis, surface, location, infos } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante pour générer l\'annonce' });
@@ -2540,7 +2533,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
   }
 });
 
-app.post('/api/refine/agent', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2554,21 +2547,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, requirePaidForRefine, chec
   }
 });
 
-app.post('/api/refine/express', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
-  try {
-    const { previousAnalysis, instructions, description } = req.body;
-    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
-    const context = description ? `Description initiale : ${description}\n\n` : '';
-    const analysis = await refineWithClaude(PROMPTS.express, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
-    res.json({ success: true, analysis });
-  } catch (error) {
-    console.error('Erreur refine express:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/refine/marchand', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, requireSiret, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2638,18 +2617,19 @@ app.post('/api/feedback', generalLimiter, async (req, res) => {
 
 app.post('/api/projets/save', requireAuth, async (req, res) => {
   try {
-    const { mode, titre, analysis, data, bien_id } = req.body;
-
+    const { mode, titre, analysis, data } = req.body;
+    
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
     }
-
-    const bienIdVal = bien_id ? parseInt(bien_id) : null;
-
+    
+    // ✅ Sauvegardes ILLIMITÉES pour tout le monde (aucun coût Anthropic, seulement du stockage)
+    // Le quota s'applique uniquement aux analyses IA, pas aux sauvegardes.
+    
     const result = await pool.query(
-      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {}), bienIdVal]
+      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {})]
     );
     
     const countResult = await pool.query(
@@ -2677,23 +2657,21 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 app.get('/api/projets/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, mode, titre, analysis, data, created_at, bien_id
-       FROM projets
-       WHERE user_email = $1
-       ORDER BY created_at DESC
+      `SELECT id, mode, titre, analysis, data, created_at 
+       FROM projets 
+       WHERE user_email = $1 
+       ORDER BY created_at DESC 
        LIMIT 100`,
       [req.user.email]
     );
-
+    
     const liste = result.rows.map(p => ({
       id: p.id.toString(),
       mode: p.mode,
       titre: p.titre,
       created_at: p.created_at,
-      bien_id: p.bien_id || null,
       location: (p.data && p.data.location) || '',
       surface: (p.data && p.data.surface) || '',
-      visite_type: (p.data && p.data.visite_type) || null,
       preview: (p.analysis || '').substring(0, 150) + '...'
     }));
     
@@ -2948,32 +2926,11 @@ app.post('/api/pdf/marchand', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    pdfGen.generateMarchandPDF({
-      analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie
+    pdfGen.generateMarchandPDF({ 
+      analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie 
     }, res);
   } catch (error) {
     console.error('Erreur PDF marchand:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/pdf/express', generalLimiter, requireAuth, async (req, res) => {
-  try {
-    const { analysis } = req.body;
-    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    const credits = parseInt(req.user.credits || 0);
-    if (req.user.plan !== 'illimite' && credits < 1) {
-      return res.status(403).json({
-        error: 'Crédits insuffisants pour générer le PDF.',
-        code: 'CREDITS_INSUFFISANTS',
-        credits_restants: credits,
-        credits_necessaires: 1
-      });
-    }
-    await deductCredits(req.user.id, 1);
-    pdfGen.generateExpressPDF({ analysis }, res);
-  } catch (error) {
-    console.error('Erreur PDF express:', error);
     res.status(500).json({ error: error.message });
   }
 });
