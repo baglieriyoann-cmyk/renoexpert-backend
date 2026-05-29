@@ -407,6 +407,9 @@ async function initDB() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_liste_attente_email ON liste_attente(email)`);
 
+    // Migration : colonne dpe_classe sur la table biens
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS dpe_classe VARCHAR(1)`);
+
     console.log('✅ Base de données initialisée');
   } catch (err) {
     console.error('❌ Erreur init DB:', err.message);
@@ -1144,11 +1147,11 @@ app.get('/api/biens', requireAuth, async (req, res) => {
 
 app.post('/api/biens', requireAuth, async (req, res) => {
   try {
-    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes } = req.body;
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe } = req.body;
     const r = await pool.query(
-      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '']
+      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '', dpe_classe || null]
     );
     res.json({ success: true, bien: r.rows[0] });
   } catch (err) {
@@ -1170,14 +1173,14 @@ app.get('/api/biens/:id', requireAuth, async (req, res) => {
 
 app.put('/api/biens/:id', requireAuth, async (req, res) => {
   try {
-    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute } = req.body;
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute, dpe_classe } = req.body;
     const r = await pool.query(
       `UPDATE biens SET adresse=$1, type_bien=$2, surface=$3, nb_niveaux=$4, date_visite=$5, notes=$6,
        rapport_complet=COALESCE($7, rapport_complet), fourchette_basse=COALESCE($8, fourchette_basse),
-       fourchette_haute=COALESCE($9, fourchette_haute), updated_at=NOW()
-       WHERE id=$10 AND user_id=$11 RETURNING *`,
+       fourchette_haute=COALESCE($9, fourchette_haute), dpe_classe=COALESCE($10, dpe_classe), updated_at=NOW()
+       WHERE id=$11 AND user_id=$12 RETURNING *`,
       [adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet || null,
-       fourchette_basse || null, fourchette_haute || null, req.params.id, req.user.id]
+       fourchette_basse || null, fourchette_haute || null, dpe_classe || null, req.params.id, req.user.id]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'Bien non trouvé' });
     res.json({ success: true, bien: r.rows[0] });
@@ -2407,7 +2410,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2439,7 +2442,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, requireSiret, checkAnalys
   }
 });
 
-app.post('/api/analyze/marchand', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 50 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2510,7 +2513,7 @@ app.post('/api/refine/reparation', aiLimiter, requireAuth, requirePaidForRefine,
 });
 
 // Génère des annonces immobilières (LeBonCoin, SeLoger, réseaux) à partir d'une analyse existante
-app.post('/api/annonce', aiLimiter, requireAuth, requireSiret, checkAnalysesQuota, async (req, res) => {
+app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req, res) => {
   try {
     const { analysis, surface, location, infos } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante pour générer l\'annonce' });
@@ -2533,7 +2536,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, requireSiret, checkAnalysesQuot
   }
 });
 
-app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2547,7 +2550,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, requirePaidF
   }
 });
 
-app.post('/api/refine/marchand', aiLimiter, requireAuth, requireSiret, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
