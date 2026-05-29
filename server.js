@@ -143,18 +143,20 @@ const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://renoexpert.fr').replace(/\/$/, '');
-const LIMITE_ANALYSES_GRATUIT = 5;
-
-// Limites d'analyses GRATUITES par mode (version test/découverte).
-// L'admin ('illimite') n'est jamais concerné.
-const LIMITES_PAR_MODE = {
-  reparation: 1,   // Travaux & Réparations : 1 analyse
-  agent: 3,        // Agent Immobilier : 3 analyses
-  marchand: 1,     // Marchand de Biens : 1 analyse
-  visite: 1        // Visite Immobilière : 1 analyse (PDF réservé au payant)
+// ============================================================
+// SYSTÈME DE CRÉDITS (remplace le quota par mode)
+// ============================================================
+// Coût en crédits par type d'analyse
+const CREDIT_COSTS = {
+  express:  1,   // Chiffrage Express (prompt court)
+  complet:  3,   // Rapport Complet (prompt actuel v3.37)
+  annonce:  1,   // Génération d'annonce immobilière
+  default:  1    // fallback
 };
-// Modes où le PDF est réservé à la version payante (bloqué en version test)
-const MODES_SANS_PDF = ['visite'];
+// Crédits offerts à l'inscription (bêta)
+const CREDITS_BETA = 3;
+// Admin : crédits illimités (plan 'illimite')
+const MODES_SANS_PDF = []; // Plus de restriction PDF en bêta crédits
 
 // ============================================================
 // CONNEXION POSTGRESQL
@@ -314,6 +316,80 @@ async function initDB() {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_questionnaires_user ON questionnaires(user_id)`);
+
+    // === NOUVEAU SYSTÈME CRÉDITS + PROFILS (mai 2026) ===
+    // Colonne credits (solde disponible, défaut 3 crédits bêta)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='credits') THEN
+          ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT ${CREDITS_BETA};
+        END IF;
+      END $$;
+    `);
+    // Colonne profil (array ex: '{"agent"}', '{"particulier"}', '{"investisseur"}')
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profil') THEN
+          ALTER TABLE users ADD COLUMN profil TEXT[] DEFAULT '{}';
+        END IF;
+      END $$;
+    `);
+
+    // Table biens (portefeuille agent / investisseur)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS biens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        adresse VARCHAR(500),
+        type_bien VARCHAR(100),
+        surface NUMERIC(8,2),
+        nb_niveaux INTEGER DEFAULT 1,
+        date_visite DATE,
+        statut VARCHAR(50) DEFAULT 'actif',
+        fourchette_basse INTEGER,
+        fourchette_haute INTEGER,
+        rapport_complet TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_biens_user ON biens(user_id, created_at DESC)`);
+
+    // Table pieces (arbre généalogique : bien → étage → pièce)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pieces (
+        id SERIAL PRIMARY KEY,
+        bien_id INTEGER NOT NULL REFERENCES biens(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL,
+        etage VARCHAR(50),
+        nom VARCHAR(100),
+        surface NUMERIC(6,2),
+        statut VARCHAR(20) DEFAULT 'standard',
+        travaux TEXT[],
+        fourchette_basse INTEGER,
+        fourchette_haute INTEGER,
+        analyse_express TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pieces_bien ON pieces(bien_id)`);
+
+    // Table satisfaction (mini questionnaire post-analyse)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS satisfaction (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        user_email VARCHAR(255),
+        mode VARCHAR(50),
+        note INTEGER,
+        precis BOOLEAN,
+        commentaire TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
     // Table LISTE D'ATTENTE — prospects intéressés par la future version payante.
     // Permet de mesurer la demande réelle et de fixer le prix juste avant d'ouvrir les paiements.
@@ -631,7 +707,7 @@ async function requireAuth(req, res, next) {
   
   try {
     const result = await pool.query(
-      'SELECT id, email, nom, plan, nb_analyses, siret FROM users WHERE session_token = $1 AND session_expires > NOW()',
+      'SELECT id, email, nom, plan, nb_analyses, siret, credits, profil FROM users WHERE session_token = $1 AND session_expires > NOW()',
       [token]
     );
     
@@ -672,30 +748,48 @@ async function getNbAnalysesMode(userId, mode) {
   }
 }
 
-// Vérifie le quota d'analyses PAR MODE AVANT l'appel à l'IA (middleware).
-// L'admin ('illimite') passe toujours.
-async function checkAnalysesQuota(req, res, next) {
-  if (req.user.plan === 'illimite') {
-    return next();
-  }
-  const mode = getModeFromReq(req);
-  const limite = (mode && LIMITES_PAR_MODE[mode] !== undefined) ? LIMITES_PAR_MODE[mode] : LIMITE_ANALYSES_GRATUIT;
-  const nbAnalyses = await getNbAnalysesMode(req.user.id, mode || 'global');
-  if (nbAnalyses >= limite) {
-    const labels = { reparation: 'Travaux & Réparations', agent: 'Agent Immobilier', marchand: 'Marchand de Biens', visite: 'Visite Immobilière' };
+// ============================================================
+// CRÉDITS — Middleware + helpers
+// ============================================================
+
+// Récupère le coût en crédits selon le type d'analyse
+function getCreditCost(req) {
+  if (req.path.includes('/api/analyze/express')) return CREDIT_COSTS.express;
+  if (req.path.includes('/api/annonce')) return CREDIT_COSTS.annonce;
+  return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
+}
+
+// Vérifie que l'utilisateur a assez de crédits AVANT l'appel IA
+async function checkCredits(req, res, next) {
+  if (req.user.plan === 'illimite') return next(); // admin : toujours OK
+  const cost = getCreditCost(req);
+  const credits = parseInt(req.user.credits || 0);
+  if (credits < cost) {
     return res.status(403).json({
-      error: `Vous avez utilisé votre ${limite > 1 ? limite + ' analyses gratuites' : 'analyse gratuite'} pour le mode ${labels[mode] || mode}. Laissez votre email pour être averti du lancement de la version complète !`,
-      code: 'ANALYSES_QUOTA_EXCEEDED',
-      mode: mode,
-      quota: {
-        utilises: nbAnalyses,
-        limite: limite,
-        illimite: false
-      }
+      error: `Crédits insuffisants. Cette analyse coûte ${cost} crédit${cost > 1 ? 's' : ''}. Votre solde : ${credits} crédit${credits !== 1 ? 's' : ''}.`,
+      code: 'CREDITS_INSUFFISANTS',
+      credits_restants: credits,
+      credits_necessaires: cost
     });
   }
+  req.creditCost = cost; // mémorise pour déduire après l'analyse
   next();
 }
+
+// Déduit les crédits après une analyse réussie
+async function deductCredits(userId, cost) {
+  try {
+    await pool.query(
+      'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+      [cost, userId]
+    );
+  } catch (err) {
+    console.error('⚠️ Erreur déduction crédits user', userId, ':', err.message);
+  }
+}
+
+// Compat : checkAnalysesQuota redirige vers checkCredits
+const checkAnalysesQuota = checkCredits;
 
 // ============================================================
 // VÉRIFICATION SIRET (modes pro : agent / marchand)
@@ -789,32 +883,20 @@ async function requireSiret(req, res, next) {
   });
 }
 
-// Affinement réservé à la version payante (et à l'admin).
-// En gratuit : 1 analyse sèche, pas d'affinement. Les 3 affinements gratuits
-// seront un avantage des formules payantes (à activer avec les paiements).
+// Affinement : libre pour tous dès qu'on a des crédits (pas de coût supplémentaire pour affiner)
 function requirePaidForRefine(req, res, next) {
-  if (req.user.plan === 'illimite') return next();      // admin : libre
-  if (req.user.plan && req.user.plan !== 'gratuit') return next(); // payant : libre (gestion des 3 gratuits à venir)
-  return res.status(403).json({
-    error: "L'affinement est réservé à la version complète. En version d'essai, chaque analyse est unique.",
-    code: 'REFINE_RESERVE_PAYANT',
-    mode: getModeFromReq(req)
-  });
+  return next(); // L'affinement ne coûte plus de crédits supplémentaires
 }
-async function incrementAnalysesCounter(userId, mode) {
+async function incrementAnalysesCounter(userId, mode, creditCost) {
   try {
+    // Compteur global nb_analyses (conservé pour stats)
     await pool.query(
       'UPDATE users SET nb_analyses = COALESCE(nb_analyses, 0) + 1 WHERE id = $1',
       [userId]
     );
-    if (mode) {
-      await pool.query(
-        `INSERT INTO analyses_par_mode (user_id, mode, nb_analyses, updated_at)
-         VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
-         ON CONFLICT (user_id, mode)
-         DO UPDATE SET nb_analyses = analyses_par_mode.nb_analyses + 1, updated_at = CURRENT_TIMESTAMP`,
-        [userId, mode]
-      );
+    // Déduire les crédits si un coût est fourni
+    if (creditCost && creditCost > 0) {
+      await deductCredits(userId, creditCost);
     }
   } catch (err) {
     console.error('⚠️ Erreur incrément nb_analyses pour user', userId, ':', err.message);
@@ -863,9 +945,9 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const sessionExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     
     const result = await pool.query(
-      `INSERT INTO users (email, password_hash, nom, plan, session_token, session_expires, last_login) 
-       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, email, nom, plan`,
-      [emailClean, passwordHash, nom || '', plan, sessionToken, sessionExpires]
+      `INSERT INTO users (email, password_hash, nom, plan, credits, profil, session_token, session_expires, last_login) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, email, nom, plan, credits, profil`,
+      [emailClean, passwordHash, nom || '', plan, plan === 'illimite' ? 9999 : CREDITS_BETA, '{}', sessionToken, sessionExpires]
     );
     
     const user = result.rows[0];
@@ -892,7 +974,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     res.json({
       success: true,
       token: sessionToken,
-      user: { id: user.id, email: user.email, nom: user.nom, plan: user.plan }
+      user: { id: user.id, email: user.email, nom: user.nom, plan: user.plan, credits: user.credits, profil: user.profil || [] }
     });
     
   } catch (error) {
@@ -913,7 +995,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const emailClean = email.toLowerCase().trim();
     
     const result = await pool.query(
-      'SELECT id, email, password_hash, nom, plan FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, nom, plan, credits, profil FROM users WHERE email = $1',
       [emailClean]
     );
     
@@ -947,7 +1029,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     res.json({
       success: true,
       token: sessionToken,
-      user: { id: user.id, email: user.email, nom: user.nom, plan: userPlan }
+      user: { id: user.id, email: user.email, nom: user.nom, plan: userPlan, credits: user.credits || 0, profil: user.profil || [] }
     });
     
   } catch (error) {
@@ -968,52 +1050,25 @@ app.post('/api/auth/logout', requireAuth, async (req, res) => {
 
 // VÉRIFIER LA SESSION
 app.get('/api/auth/me', requireAuth, async (req, res) => {
-  // Compter aussi les projets (pour info, plus pour quota)
   const countResult = await pool.query(
     'SELECT COUNT(*) FROM projets WHERE user_email = $1',
     [req.user.email]
   );
-  
-  const nbProjets = parseInt(countResult.rows[0].count);
-  const nbAnalyses = parseInt(req.user.nb_analyses || 0);
-  const limite = req.user.plan === 'illimite' ? null : LIMITE_ANALYSES_GRATUIT;
-  const estIllimite = req.user.plan === 'illimite';
-
-  // Détail du quota PAR MODE (pour afficher les analyses restantes sur chaque carte)
-  let quotaParMode = {};
-  try {
-    const r = await pool.query(
-      'SELECT mode, nb_analyses FROM analyses_par_mode WHERE user_id = $1',
-      [req.user.id]
-    );
-    const utilisesParMode = {};
-    r.rows.forEach(row => { utilisesParMode[row.mode] = parseInt(row.nb_analyses || 0); });
-    Object.keys(LIMITES_PAR_MODE).forEach(mode => {
-      const lim = LIMITES_PAR_MODE[mode];
-      const used = utilisesParMode[mode] || 0;
-      quotaParMode[mode] = {
-        utilises: used,
-        limite: lim,
-        restant: estIllimite ? null : Math.max(0, lim - used),
-        illimite: estIllimite
-      };
-    });
-  } catch (err) {
-    console.error('⚠️ quota_par_mode échec:', err.message);
-  }
+  // Récupère les crédits frais depuis la DB
+  const userFresh = await pool.query(
+    'SELECT credits, profil FROM users WHERE id = $1',
+    [req.user.id]
+  );
+  const credits = parseInt((userFresh.rows[0] && userFresh.rows[0].credits) || 0);
+  const profil = (userFresh.rows[0] && userFresh.rows[0].profil) || [];
 
   res.json({
     success: true,
-    user: req.user,
-    siret: req.user.siret || null,
-    quota: {
-      utilises: nbAnalyses,
-      limite: limite,
-      illimite: estIllimite,
-      type: 'analyses',
-      nb_projets: nbProjets
-    },
-    quota_par_mode: quotaParMode
+    user: { ...req.user, credits, profil },
+    credits: credits,
+    illimite: req.user.plan === 'illimite',
+    profil: profil,
+    nb_projets: parseInt(countResult.rows[0].count)
   });
 });
 
@@ -1044,6 +1099,137 @@ app.post('/api/siret/verifier', generalLimiter, requireAuth, async (req, res) =>
   } catch (err) {
     console.error('Erreur vérification SIRET:', err);
     res.status(500).json({ ok: false, error: 'Erreur serveur lors de la vérification.' });
+  }
+});
+
+// ============================================================
+// PROFIL UTILISATEUR — Sauvegarde du profil choisi à l'onboarding
+// ============================================================
+app.post('/api/user/profil', requireAuth, async (req, res) => {
+  try {
+    const { profil } = req.body; // ex: ["agent"] ou ["particulier"] ou ["investisseur"]
+    if (!Array.isArray(profil) || profil.length === 0) {
+      return res.status(400).json({ error: 'Profil invalide' });
+    }
+    const profilValid = profil.filter(p => ['agent', 'particulier', 'investisseur', 'marchand'].includes(p));
+    await pool.query('UPDATE users SET profil = $1 WHERE id = $2', [profilValid, req.user.id]);
+    res.json({ success: true, profil: profilValid });
+  } catch (err) {
+    console.error('Erreur save profil:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ============================================================
+// BIENS — Portefeuille agent / investisseur
+// ============================================================
+app.get('/api/biens', requireAuth, async (req, res) => {
+  try {
+    const biens = await pool.query(
+      'SELECT * FROM biens WHERE user_id = $1 ORDER BY created_at DESC',
+      [req.user.id]
+    );
+    // Pour chaque bien, récupérer ses pièces
+    const result = [];
+    for (const bien of biens.rows) {
+      const pieces = await pool.query('SELECT * FROM pieces WHERE bien_id = $1 ORDER BY etage, nom', [bien.id]);
+      result.push({ ...bien, pieces: pieces.rows });
+    }
+    res.json({ success: true, biens: result });
+  } catch (err) {
+    console.error('Erreur get biens:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.post('/api/biens', requireAuth, async (req, res) => {
+  try {
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes } = req.body;
+    const r = await pool.query(
+      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '']
+    );
+    res.json({ success: true, bien: r.rows[0] });
+  } catch (err) {
+    console.error('Erreur create bien:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.get('/api/biens/:id', requireAuth, async (req, res) => {
+  try {
+    const bien = await pool.query('SELECT * FROM biens WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (bien.rows.length === 0) return res.status(404).json({ error: 'Bien non trouvé' });
+    const pieces = await pool.query('SELECT * FROM pieces WHERE bien_id = $1 ORDER BY etage, nom', [req.params.id]);
+    res.json({ success: true, bien: { ...bien.rows[0], pieces: pieces.rows } });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.put('/api/biens/:id', requireAuth, async (req, res) => {
+  try {
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute } = req.body;
+    const r = await pool.query(
+      `UPDATE biens SET adresse=$1, type_bien=$2, surface=$3, nb_niveaux=$4, date_visite=$5, notes=$6,
+       rapport_complet=COALESCE($7, rapport_complet), fourchette_basse=COALESCE($8, fourchette_basse),
+       fourchette_haute=COALESCE($9, fourchette_haute), updated_at=NOW()
+       WHERE id=$10 AND user_id=$11 RETURNING *`,
+      [adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet || null,
+       fourchette_basse || null, fourchette_haute || null, req.params.id, req.user.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Bien non trouvé' });
+    res.json({ success: true, bien: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.delete('/api/biens/:id', requireAuth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM biens WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+app.post('/api/biens/:id/pieces', requireAuth, async (req, res) => {
+  try {
+    const { etage, nom, surface, statut, travaux } = req.body;
+    const r = await pool.query(
+      `INSERT INTO pieces (bien_id, user_id, etage, nom, surface, statut, travaux)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.params.id, req.user.id, etage || 'RDC', nom || '', surface || null, statut || 'standard', travaux || []]
+    );
+    res.json({ success: true, piece: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ============================================================
+// SATISFACTION — Mini questionnaire post-analyse
+// ============================================================
+app.post('/api/satisfaction', requireAuth, async (req, res) => {
+  try {
+    const { mode, note, precis, commentaire } = req.body;
+    await pool.query(
+      `INSERT INTO satisfaction (user_id, user_email, mode, note, precis, commentaire)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.id, req.user.email, mode || '', note || null, precis !== undefined ? precis : null, commentaire || '']
+    );
+    // Notif admin si commentaire
+    if (commentaire && NOTIFICATION_EMAIL) {
+      sendEmail(NOTIFICATION_EMAIL, `💬 Feedback RénoExpert — ${mode}`,
+        emailTemplate('Nouveau feedback', `<p><b>Mode :</b> ${mode}</p><p><b>Note :</b> ${note}/5</p><p><b>Précis :</b> ${precis ? 'Oui' : 'Non'}</p><p><b>Commentaire :</b> ${commentaire}</p>`)
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erreur satisfaction:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -1877,6 +2063,18 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 🟢 GO / 🟡 GO avec négociation / 🔴 PASS
 [Justification]`,
 
+  // Prompt Express : ultra-court, résultat en 30 secondes
+  express: `Tu es un expert bâtiment français. Analyse cette photo et réponds UNIQUEMENT avec ce format exact (5 lignes max) :
+
+**Estimation globale :** [X 000 € – Y 000 €]
+**Niveau :** [Léger / Moyen / Lourd]
+**3 postes principaux :**
+- [Poste 1] : [fourchette €]
+- [Poste 2] : [fourchette €]
+- [Poste 3] : [fourchette €]
+
+Aucune procédure technique, aucune explication. Prix 2025-2026.`,
+
   annonce: `Tu es un expert en rédaction d'annonces immobilières qui VENDENT. À partir des informations du bien et de l'analyse fournie, rédige des annonces prêtes à publier, optimisées pour convertir.
 
 RÈGLES DE STYLE :
@@ -2132,6 +2330,26 @@ ${systemPrompt}`;
   return message.content[0].text;
 }
 
+// ============================================================
+// ROUTE EXPRESS — Chiffrage rapide (1 crédit, ~30 secondes)
+// ============================================================
+app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.array('photos', 5), async (req, res) => {
+  try {
+    const { context_bien, description } = req.body;
+    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    const context = [
+      context_bien ? `Contexte du bien : ${context_bien}` : '',
+      description ? `Description : ${description}` : ''
+    ].filter(Boolean).join('\n');
+    const analysis = await analyzeWithClaude(PROMPTS.express, req.files, context);
+    await incrementAnalysesCounter(req.user.id, 'express', req.creditCost || 1);
+    res.json({ success: true, analysis, mode: 'express' });
+  } catch (error) {
+    console.error('Erreur express:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
   try {
     const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent } = req.body;
@@ -2156,7 +2374,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(prompt, photos, context, dpeFiles, photoComments);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur visite:', error);
@@ -2181,7 +2399,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur reparation:', error);
@@ -2213,7 +2431,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, requireSiret, checkAnalys
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles, photoComments);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0, dvf_utilise: !!dvf });
   } catch (error) {
     console.error('Erreur agent:', error);
@@ -2250,7 +2468,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, dpeFiles, photoComments);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
@@ -2269,7 +2487,7 @@ app.post('/api/refine/visite', aiLimiter, requireAuth, requirePaidForRefine, che
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
     const analysis = await refineWithClaude(PROMPTS.visite, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine visite:', error);
@@ -2283,7 +2501,7 @@ app.post('/api/refine/reparation', aiLimiter, requireAuth, requirePaidForRefine,
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
     const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
     console.error('Erreur refine reparation:', error);
@@ -2307,7 +2525,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, requireSiret, checkAnalysesQuot
       messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
     });
     const annonce = message.content[0].text;
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, annonce });
   } catch (error) {
     console.error('Erreur génération annonce:', error);
@@ -2321,7 +2539,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, requireSiret, requirePaidF
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
     const analysis = await refineWithClaude(PROMPTS.agent, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
     console.error('Erreur refine agent:', error);
@@ -2343,7 +2561,7 @@ Nombre de lots envisagés : ${nb_lots}
 
 `;
     const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context);
-    await incrementAnalysesCounter(req.user.id, getModeFromReq(req));
+    await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = prix_demande ? Math.round(parseFloat(prix_demande) * 0.03) : null;
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
   } catch (error) {
