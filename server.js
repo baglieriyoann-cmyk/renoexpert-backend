@@ -245,6 +245,7 @@ async function initDB() {
       END $$;
     `);
     
+    await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS bien_id INTEGER`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_projets_user ON projets(user_id, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_token)`);
@@ -2622,19 +2623,18 @@ app.post('/api/feedback', generalLimiter, async (req, res) => {
 
 app.post('/api/projets/save', requireAuth, async (req, res) => {
   try {
-    const { mode, titre, analysis, data } = req.body;
-    
+    const { mode, titre, analysis, data, bien_id } = req.body;
+
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
     }
-    
-    // ✅ Sauvegardes ILLIMITÉES pour tout le monde (aucun coût Anthropic, seulement du stockage)
-    // Le quota s'applique uniquement aux analyses IA, pas aux sauvegardes.
-    
+
+    const bienIdVal = bien_id ? parseInt(bien_id) : null;
+
     const result = await pool.query(
-      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {})]
+      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {}), bienIdVal]
     );
     
     const countResult = await pool.query(
@@ -2662,19 +2662,20 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 app.get('/api/projets/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, mode, titre, analysis, data, created_at 
-       FROM projets 
-       WHERE user_email = $1 
-       ORDER BY created_at DESC 
+      `SELECT id, mode, titre, analysis, data, created_at, bien_id
+       FROM projets
+       WHERE user_email = $1
+       ORDER BY created_at DESC
        LIMIT 100`,
       [req.user.email]
     );
-    
+
     const liste = result.rows.map(p => ({
       id: p.id.toString(),
       mode: p.mode,
       titre: p.titre,
       created_at: p.created_at,
+      bien_id: p.bien_id || null,
       location: (p.data && p.data.location) || '',
       surface: (p.data && p.data.surface) || '',
       visite_type: (p.data && p.data.visite_type) || null,
