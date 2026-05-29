@@ -148,10 +148,11 @@ const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://renoexpert.fr').repla
 // ============================================================
 // Coût en crédits par type d'analyse
 const CREDIT_COSTS = {
-  express:  1,   // Chiffrage Express (prompt court)
-  complet:  3,   // Rapport Complet (prompt actuel v3.37)
-  annonce:  1,   // Génération d'annonce immobilière
-  default:  1    // fallback
+  express:    1,   // Chiffrage Express (prompt court)
+  reparation: 2,   // Travaux & Réparations (rapport complet sans investissement)
+  complet:    3,   // Rapport Complet agent/visite/marchand
+  annonce:    1,   // Génération d'annonce immobilière
+  default:    1    // fallback
 };
 // Crédits offerts à l'inscription (bêta)
 const CREDITS_BETA = 3;
@@ -758,6 +759,7 @@ async function getNbAnalysesMode(userId, mode) {
 // Récupère le coût en crédits selon le type d'analyse
 function getCreditCost(req) {
   if (req.path.includes('/api/analyze/express')) return CREDIT_COSTS.express;
+  if (req.path.includes('/api/analyze/reparation')) return CREDIT_COSTS.reparation;
   if (req.path.includes('/api/annonce')) return CREDIT_COSTS.annonce;
   return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
 }
@@ -2930,11 +2932,32 @@ app.post('/api/pdf/marchand', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    pdfGen.generateMarchandPDF({ 
-      analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie 
+    pdfGen.generateMarchandPDF({
+      analysis, mb_societe, location, surface, prix_demande, nb_lots, strategie
     }, res);
   } catch (error) {
     console.error('Erreur PDF marchand:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/pdf/express', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const { analysis } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    const credits = parseInt(req.user.credits || 0);
+    if (req.user.plan !== 'illimite' && credits < 1) {
+      return res.status(403).json({
+        error: 'Crédits insuffisants pour générer le PDF.',
+        code: 'CREDITS_INSUFFISANTS',
+        credits_restants: credits,
+        credits_necessaires: 1
+      });
+    }
+    await deductCredits(req.user.id, 1);
+    pdfGen.generateExpressPDF({ analysis }, res);
+  } catch (error) {
+    console.error('Erreur PDF express:', error);
     res.status(500).json({ error: error.message });
   }
 });
