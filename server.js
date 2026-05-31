@@ -2978,11 +2978,14 @@ app.post('/api/pdf/express', generalLimiter, requireAuth, async (req, res) => {
         credits_necessaires: 1
       });
     }
+    if (typeof pdfGen.generateExpressPDF !== 'function') {
+      return res.status(500).json({ error: 'Service PDF Express non disponible.' });
+    }
     await deductCredits(req.user.id, 1);
     pdfGen.generateExpressPDF({ analysis }, res);
   } catch (error) {
     console.error('Erreur PDF express:', error);
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
