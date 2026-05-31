@@ -1011,9 +1011,44 @@ function generateMarchandPDF(data, res) {
   doc.end();
 }
 
+function generateExpressPDF(data, res) {
+  const { analysis } = data;
+  const cleaned = simplifyTerms(analysis);
+
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Chiffrage Express - RénoExpert' }});
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="chiffrage-express.pdf"');
+  doc.pipe(res);
+
+  fillBackground(doc);
+
+  drawCanvaHeader(doc, {
+    titleMain: 'Chiffrage Express',
+    titleSub: 'Estimation rapide générée par RénoExpert IA'
+  });
+
+  drawCanvaHeaderTable(doc, [
+    { title: 'Type', headerColor: COLORS.mintGreen, content: 'Estimation express' },
+    { title: 'Format', headerColor: COLORS.creamYellow, content: 'Rapport synthétique' },
+    { title: 'Date', headerColor: COLORS.coralRed, content: new Date().toLocaleDateString('fr-FR') },
+    { title: 'Source', headerColor: COLORS.powderPink, content: 'IA RénoExpert' }
+  ]);
+
+  renderContent(doc, cleaned);
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(i);
+    drawCanvaFooter(doc, i + 1, range.count);
+  }
+
+  doc.end();
+}
+
 module.exports = {
   generateVisitePDF,
   generateReparationPDF,
   generateAgentPDF,
-  generateMarchandPDF
+  generateMarchandPDF,
+  generateExpressPDF
 };
