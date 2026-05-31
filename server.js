@@ -2751,6 +2751,21 @@ app.get('/api/projets/:id', requireAuth, async (req, res) => {
   }
 });
 
+app.patch('/api/projets/:id', requireAuth, async (req, res) => {
+  try {
+    const { titre } = req.body;
+    if (!titre || !titre.trim()) return res.status(400).json({ error: 'Titre manquant' });
+    const result = await pool.query(
+      'UPDATE projets SET titre = $1, updated_at = NOW() WHERE id = $2 AND user_email = $3 RETURNING id, titre',
+      [titre.trim(), req.params.id, req.user.email]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Projet non trouvé' });
+    res.json({ success: true, projet: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.delete('/api/projets/:id', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
