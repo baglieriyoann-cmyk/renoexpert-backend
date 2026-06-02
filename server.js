@@ -3649,6 +3649,56 @@ app.get('/admin/maintenance/fix-toast', async (req, res) => {
   }
 });
 
+// Reconstruit la table projets proprement : sauvegarde → TRUNCATE → réinsertion
+// Libère le TOAST gonflé que VACUUM FULL ne peut pas nettoyer à cause du pool
+app.get('/admin/maintenance/rebuild-projets', async (req, res) => {
+  const token = req.query.token;
+  if (!token || token !== ADMIN_TOKEN) return res.status(401).send('Non autorisé');
+  const client = await pool.connect();
+  try {
+    const avant = await client.query(`SELECT pg_size_pretty(pg_total_relation_size('projets')) as taille`);
+
+    // 1. Lire toutes les lignes en mémoire
+    const rows = await client.query('SELECT * FROM projets ORDER BY id');
+
+    // 2. TRUNCATE vide physiquement le TOAST (impossible à faire autrement)
+    await client.query('TRUNCATE TABLE projets');
+
+    // 3. Réinsérer toutes les lignes
+    for (const r of rows.rows) {
+      await client.query(
+        `INSERT INTO projets (id, user_id, user_email, mode, titre, analysis, data, created_at, updated_at, bien_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [r.id, r.user_id, r.user_email, r.mode, r.titre, r.analysis, r.data,
+         r.created_at, r.updated_at, r.bien_id || null]
+      );
+    }
+
+    // 4. Remettre la séquence au bon endroit
+    await client.query(`SELECT setval('projets_id_seq', (SELECT MAX(id) FROM projets))`);
+
+    const apres = await client.query(`SELECT pg_size_pretty(pg_total_relation_size('projets')) as taille`);
+
+    res.send(`<html><head><meta charset="UTF-8"><style>
+      body{font-family:Arial,sans-serif;max-width:600px;margin:60px auto;background:#f5f7fb}
+      .card{background:white;border-radius:12px;padding:28px;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+      h2{color:#2d7a50}.big{font-size:32px;font-weight:800;color:#3d7a68}
+      a{display:inline-block;margin-top:20px;padding:10px 20px;background:#3d7a68;color:white;border-radius:8px;text-decoration:none;font-weight:700}
+    </style></head><body><div class="card">
+      <h2>✅ Table projets reconstruite</h2>
+      <p>${rows.rows.length} projets conservés</p>
+      <p>Avant : <strong>${avant.rows[0].taille}</strong></p>
+      <p>Après : <span class="big">${apres.rows[0].taille}</span></p>
+      <a href="/admin/maintenance?token=${encodeURIComponent(token)}">← Retour maintenance</a>
+    </div></body></html>`);
+  } catch (err) {
+    console.error('Erreur rebuild-projets:', err);
+    res.status(500).send('Erreur : ' + err.message);
+  } finally {
+    client.release();
+  }
+});
+
 // ============================================================
 // DÉMARRAGE
 // ============================================================
