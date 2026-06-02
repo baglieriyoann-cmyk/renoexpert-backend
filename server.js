@@ -3493,6 +3493,116 @@ setInterval(checkAndRunDailyBackup, 60 * 60 * 1000);
 setTimeout(checkAndRunDailyBackup, 30 * 1000);
 
 // ============================================================
+// MAINTENANCE BASE DE DONNÉES (admin uniquement)
+// ============================================================
+
+app.get('/admin/maintenance', async (req, res) => {
+  const token = req.query.token;
+  if (!token || token !== ADMIN_TOKEN) return res.status(401).send('Non autorisé');
+
+  try {
+    // 1. Taille de chaque table
+    const sizes = await pool.query(`
+      SELECT relname AS table,
+        pg_size_pretty(pg_total_relation_size(relid)) AS taille_totale,
+        pg_size_pretty(pg_relation_size(relid)) AS taille_données,
+        pg_total_relation_size(relid) AS bytes
+      FROM pg_catalog.pg_statio_user_tables
+      ORDER BY pg_total_relation_size(relid) DESC
+    `);
+
+    // 2. Compteurs utiles
+    const counts = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users) AS nb_users,
+        (SELECT COUNT(*) FROM projets) AS nb_projets,
+        (SELECT pg_size_pretty(SUM(length(analysis::text))) FROM projets WHERE analysis IS NOT NULL) AS taille_analyses,
+        (SELECT COUNT(*) FROM projets WHERE created_at < NOW() - INTERVAL '6 months') AS projets_vieux_6mois,
+        (SELECT COUNT(*) FROM password_resets WHERE used = TRUE OR expires_at < NOW()) AS resets_expires
+    `);
+
+    // 3. VACUUM FULL (hors transaction — connexion dédiée)
+    const vacuumClient = await pool.connect();
+    try {
+      await vacuumClient.query('VACUUM FULL ANALYZE');
+    } finally {
+      vacuumClient.release();
+    }
+
+    // 4. Supprimer les tokens reset expirés ou déjà utilisés
+    const cleanReset = await pool.query(
+      'DELETE FROM password_resets WHERE used = TRUE OR expires_at < NOW()'
+    );
+
+    // 5. Taille APRÈS vacuum
+    const sizesAfter = await pool.query(`
+      SELECT pg_size_pretty(SUM(pg_total_relation_size(relid))) AS total_apres
+      FROM pg_catalog.pg_statio_user_tables
+    `);
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <style>body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;background:#f5f7fb}
+    h1{color:#3d7a68}h2{color:#2d5e50;margin-top:30px}
+    table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+    th{background:#3d7a68;color:white;padding:10px 14px;text-align:left}
+    td{padding:9px 14px;border-bottom:1px solid #e8f0e8}
+    tr:last-child td{border-bottom:none}
+    .card{background:white;border-radius:10px;padding:20px;margin:16px 0;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+    .ok{color:#2d7a50;font-weight:700}.warn{color:#b07030;font-weight:700}
+    </style></head><body>
+    <h1>🛠️ Maintenance RénoExpert</h1>
+    <div class="card">
+      <h2>📊 Statistiques</h2>
+      <p>👥 Utilisateurs : <strong>${counts.rows[0].nb_users}</strong></p>
+      <p>📁 Projets sauvegardés : <strong>${counts.rows[0].nb_projets}</strong></p>
+      <p>📝 Taille totale des analyses : <strong>${counts.rows[0].taille_analyses || '0'}</strong></p>
+      <p>🗓️ Projets de plus de 6 mois : <strong class="warn">${counts.rows[0].projets_vieux_6mois}</strong></p>
+      <p>🔑 Tokens reset nettoyés : <strong class="ok">${cleanReset.rowCount}</strong></p>
+    </div>
+    <div class="card">
+      <h2>✅ VACUUM FULL exécuté</h2>
+      <p>Espace récupéré. Taille totale après nettoyage : <strong class="ok">${sizesAfter.rows[0].total_apres}</strong></p>
+    </div>
+    <div class="card">
+      <h2>📦 Taille par table</h2>
+      <table><thead><tr><th>Table</th><th>Taille données</th><th>Total (avec index)</th></tr></thead><tbody>
+      ${sizes.rows.map(r => `<tr><td>${r.table}</td><td>${r['taille_données']}</td><td>${r.taille_totale}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="card">
+      <h2>🗑️ Nettoyage optionnel</h2>
+      <p>Si tu veux supprimer les projets de plus de 6 mois (sans bien associé), clique :</p>
+      <a href="/admin/maintenance/clean-old-projects?token=${encodeURIComponent(token)}"
+         style="display:inline-block;padding:10px 20px;background:#c0392b;color:white;border-radius:8px;text-decoration:none;font-weight:700"
+         onclick="return confirm('Supprimer les vieux projets sans bien associé ? Action irréversible.')">
+        🗑️ Supprimer projets +6 mois sans bien
+      </a>
+    </div>
+    </body></html>`;
+
+    res.send(html);
+  } catch (error) {
+    console.error('Erreur maintenance:', error);
+    res.status(500).send('Erreur : ' + error.message);
+  }
+});
+
+app.get('/admin/maintenance/clean-old-projects', async (req, res) => {
+  const token = req.query.token;
+  if (!token || token !== ADMIN_TOKEN) return res.status(401).send('Non autorisé');
+  try {
+    const result = await pool.query(
+      'DELETE FROM projets WHERE created_at < NOW() - INTERVAL \'6 months\' AND bien_id IS NULL'
+    );
+    const vacuumClient = await pool.connect();
+    try { await vacuumClient.query('VACUUM FULL ANALYZE projets'); } finally { vacuumClient.release(); }
+    res.send(`✅ ${result.rowCount} projet(s) supprimé(s). <a href="/admin/maintenance?token=${encodeURIComponent(token)}">← Retour</a>`);
+  } catch (error) {
+    res.status(500).send('Erreur : ' + error.message);
+  }
+});
+
+// ============================================================
 // DÉMARRAGE
 // ============================================================
 
