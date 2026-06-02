@@ -42,7 +42,7 @@ app.use(cors({
     if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.netlify.app')) {
       return callback(null, true);
     }
-    return callback(null, true); // fallback permissif pour ne pas casser la prod
+    return callback(new Error('Origine non autorisée: ' + origin));
   },
   credentials: true
 }));
@@ -137,7 +137,7 @@ const generalLimiter = createRateLimiter({
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 15 * 1024 * 1024, files: 52 }
 });
 
 const anthropic = new Anthropic({
@@ -155,6 +155,9 @@ const anthropic = new Anthropic({
 // - NOTIFICATION_EMAIL : email où tu veux recevoir les notifications
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
+if (!process.env.ADMIN_TOKEN) {
+  console.warn('⚠️  ADMIN_TOKEN non défini — token par défaut "admin123" actif. Définissez ADMIN_TOKEN dans Railway !');
+}
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
@@ -175,7 +178,6 @@ const CREDITS_BETA = 3;
 // Limite d'analyses affichée dans le dashboard admin (historique, avant système crédits)
 const LIMITE_ANALYSES_GRATUIT = 5;
 // Admin : crédits illimités (plan 'illimite')
-const MODES_SANS_PDF = []; // Plus de restriction PDF en bêta crédits
 
 // ============================================================
 // CONNEXION POSTGRESQL
@@ -457,7 +459,7 @@ async function sendEmail(to, subject, htmlContent) {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        sender: { name: 'RénoExpert', email: 'baglieriyoann@gmail.com' },
+        sender: { name: 'RénoExpert', email: process.env.SENDER_EMAIL || 'baglieriyoann@gmail.com' },
         to: [{ email: to }],
         subject,
         htmlContent
@@ -801,13 +803,16 @@ async function checkCredits(req, res, next) {
   next();
 }
 
-// Déduit les crédits après une analyse réussie
+// Déduit les crédits après une analyse réussie (atomique : échoue si crédits insuffisants)
 async function deductCredits(userId, cost) {
   try {
-    await pool.query(
-      'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+    const result = await pool.query(
+      'UPDATE users SET credits = credits - $1 WHERE id = $2 AND credits >= $1 RETURNING credits',
       [cost, userId]
     );
+    if (result.rows.length === 0) {
+      console.error('⚠️ Déduction impossible : crédits insuffisants ou race condition pour user', userId);
+    }
   } catch (err) {
     console.error('⚠️ Erreur déduction crédits user', userId, ':', err.message);
   }
@@ -851,6 +856,7 @@ async function verifierSiretInsee(siret) {
   // Si la clé INSEE n'est pas configurée, on accepte sur la base du format (mode bêta dégradé)
   const apiKey = process.env.INSEE_API_KEY;
   if (!apiKey) {
+    console.warn('⚠️  INSEE_API_KEY non définie — vérification SIRET sur format uniquement (un faux SIRET valide peut passer).');
     return { ok: true, etablissement_actif: null, raison_sociale: null, source: 'format_only' };
   }
   // Appel API Sirene établissement
@@ -1424,24 +1430,22 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Ce lien a expiré (validité : 1h)' });
     }
 
-    // Mettre à jour le mot de passe
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await pool.query(
-      'UPDATE users SET password_hash = $1 WHERE id = $2',
-      [passwordHash, reset.user_id]
-    );
-
-    // Marquer le token comme utilisé (anti-réutilisation)
-    await pool.query(
-      'UPDATE password_resets SET used = TRUE WHERE id = $1',
-      [reset.id]
-    );
-
-    // Invalider toutes les sessions actives (sécurité : si quelqu'un avait piraté le compte, il est déconnecté)
-    await pool.query(
-      'UPDATE users SET session_token = NULL, session_expires = NULL WHERE id = $1',
-      [reset.user_id]
-    );
+    const dbClient = await pool.connect();
+    try {
+      await dbClient.query('BEGIN');
+      // Marquer le token utilisé EN PREMIER pour bloquer toute réutilisation concurrente
+      await dbClient.query('UPDATE password_resets SET used = TRUE WHERE id = $1', [reset.id]);
+      await dbClient.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, reset.user_id]);
+      // Invalider toutes les sessions actives
+      await dbClient.query('UPDATE users SET session_token = NULL, session_expires = NULL WHERE id = $1', [reset.user_id]);
+      await dbClient.query('COMMIT');
+    } catch (txErr) {
+      await dbClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      dbClient.release();
+    }
 
     console.log('🔐 Mot de passe réinitialisé pour user_id =', reset.user_id);
     res.json({ success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous reconnecter.' });
@@ -2305,7 +2309,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
     model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     messages: [{ role: 'user', content }]
-  });
+  }, { timeout: 90 * 1000 });
 
   return message.content[0].text;
 }
@@ -2950,14 +2954,6 @@ app.get('/api/admin/prospects', requireAuth, async (req, res) => {
 
 app.post('/api/pdf/visite', generalLimiter, requireAuth, async (req, res) => {
   try {
-    // En version test/découverte, le PDF du mode Visite est réservé à la version complète (sauf admin).
-    if (req.user.plan !== 'illimite') {
-      return res.status(403).json({
-        error: 'Le rapport PDF du mode Visite Immobilière est réservé à la version complète. Idéal pour constituer votre dossier banque avec le détail chiffré des travaux ! Laissez votre email pour être averti du lancement.',
-        code: 'PDF_RESERVE_PAYANT',
-        mode: 'visite'
-      });
-    }
     const { analysis, location, surface, visite_type, loyer_vise, prix_achat } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
     pdfGen.generateVisitePDF({ analysis, location, surface, visite_type, loyer_vise, prix_achat }, res);
