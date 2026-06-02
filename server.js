@@ -3602,6 +3602,50 @@ app.get('/admin/maintenance/clean-old-projects', async (req, res) => {
   }
 });
 
+app.get('/admin/maintenance/fix-toast', async (req, res) => {
+  const token = req.query.token;
+  if (!token || token !== ADMIN_TOKEN) return res.status(401).send('Non autorisé');
+  try {
+    // Réécriture de toutes les analyses pour marquer l'ancien TOAST comme mort
+    await pool.query('UPDATE projets SET analysis = analysis');
+
+    // VACUUM FULL hors transaction sur connexion dédiée
+    const client = await pool.connect();
+    try {
+      await client.query('VACUUM FULL projets');
+    } finally {
+      client.release();
+    }
+
+    // Taille après
+    const after = await pool.query(`
+      SELECT
+        pg_size_pretty(pg_relation_size('projets')) as donnees,
+        pg_size_pretty(pg_indexes_size('projets')) as index,
+        pg_size_pretty(pg_total_relation_size('projets') - pg_relation_size('projets') - pg_indexes_size('projets')) as toast,
+        pg_size_pretty(pg_total_relation_size('projets')) as total
+    `);
+    const r = after.rows[0];
+    res.send(`
+      <html><head><meta charset="UTF-8"><style>
+        body{font-family:Arial,sans-serif;max-width:600px;margin:60px auto;background:#f5f7fb}
+        .card{background:white;border-radius:12px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+        h2{color:#2d7a50}table{width:100%;border-collapse:collapse;margin-top:16px}
+        th{background:#3d7a68;color:white;padding:10px}td{padding:9px;border-bottom:1px solid #eee;text-align:center}
+        a{display:inline-block;margin-top:20px;padding:10px 20px;background:#3d7a68;color:white;border-radius:8px;text-decoration:none;font-weight:700}
+      </style></head><body><div class="card">
+        <h2>✅ TOAST nettoyé avec succès</h2>
+        <table><thead><tr><th>Données</th><th>Index</th><th>TOAST</th><th>Total</th></tr></thead>
+        <tbody><tr><td>${r.donnees}</td><td>${r.index}</td><td>${r.toast}</td><td><strong>${r.total}</strong></td></tr></tbody>
+        </table>
+        <a href="/admin/maintenance?token=${encodeURIComponent(token)}">← Retour maintenance</a>
+      </div></body></html>
+    `);
+  } catch (error) {
+    res.status(500).send('Erreur : ' + error.message);
+  }
+});
+
 // ============================================================
 // DÉMARRAGE
 // ============================================================
