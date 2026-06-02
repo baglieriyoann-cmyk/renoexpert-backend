@@ -2326,7 +2326,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
     model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     messages: [{ role: 'user', content }]
-  }, { timeout: 90 * 1000 });
+  }, { timeout: 180 * 1000 });
 
   return message.content[0].text;
 }
@@ -2395,6 +2395,7 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
   try {
     const { context_bien, description } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (req.files.length > 5) return res.status(400).json({ error: 'Maximum 5 photos autorisées pour cette analyse.' });
     const context = [
       context_bien ? `Contexte du bien : ${context_bien}` : '',
       description ? `Description : ${description}` : ''
@@ -2414,6 +2415,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (photos.length > 20) return res.status(400).json({ error: 'Maximum 20 photos autorisées pour cette analyse.' });
     const isLocatif = visite_type === 'locatif';
     const dpeNote = dpeFiles.length > 0
       ? `\nUn DPE du bien est joint (document avant les photos). Utilise SES VALEURS RÉELLES.\n`
@@ -2454,6 +2456,7 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   try {
     const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (req.files.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées pour cette analyse.' });
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
@@ -2471,6 +2474,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
     const dpeNote = dpeFiles.length > 0
       ? `\nUn DPE du bien est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — pas d'estimation.\n`
       : `\nAucun DPE fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le DPE peut être ajouté ultérieurement et la fiche régénérée.\n`;
@@ -2503,6 +2507,7 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (photos.length > 50) return res.status(400).json({ error: 'Maximum 50 photos autorisées pour cette analyse.' });
     const dpeNote = dpeFiles.length > 0
       ? `\nDPE joint — utilise SES VALEURS RÉELLES (classe, kWh/m²/an, GES) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB.\n`
       : `\nAucun DPE fourni — estime la classe probable d'après les photos et l'année de construction.\n`;
@@ -3738,7 +3743,7 @@ app.get('/admin/maintenance/rebuild-projets', async (req, res) => {
 // DÉMARRAGE
 // ============================================================
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 RénoExpert Backend v3.3 lancé sur le port ${PORT}`);
   console.log(`🗄️ PostgreSQL : ${process.env.DATABASE_URL ? 'connecté' : '⚠️ NON CONFIGURÉ'}`);
   console.log(`📧 Brevo : ${BREVO_API_KEY ? 'configuré' : '⚠️ NON CONFIGURÉ'}`);
@@ -3746,3 +3751,6 @@ app.listen(PORT, () => {
   console.log(`🔑 Admin token : ${ADMIN_TOKEN === 'admin123' ? '⚠️ Token par défaut' : '✅ configuré'}`);
   console.log(`💾 Backup auto : quotidien à 3h → ${NOTIFICATION_EMAIL || '⚠️ NOTIFICATION_EMAIL non configuré'}`);
 });
+server.setTimeout(300000);
+server.keepAliveTimeout = 310000;
+server.headersTimeout = 320000;
