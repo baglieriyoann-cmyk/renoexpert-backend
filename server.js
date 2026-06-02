@@ -2266,16 +2266,28 @@ app.get('/api/prix-secteur', requireAuth, async (req, res) => {
 // ============================================================
 
 // Convertit un fichier multer en bloc content Claude (image ou document PDF)
-function fileToContent(file) {
+async function resizePhotoForApi(buffer) {
+  try {
+    return await sharp(buffer)
+      .resize({ width: 1800, height: 1800, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+  } catch {
+    return buffer;
+  }
+}
+
+function fileToContent(file, resizedBuffer) {
   if (file.mimetype === 'application/pdf') {
     return {
       type: 'document',
       source: { type: 'base64', media_type: 'application/pdf', data: file.buffer.toString('base64') }
     };
   }
+  const buf = resizedBuffer || file.buffer;
   return {
     type: 'image',
-    source: { type: 'base64', media_type: file.mimetype, data: file.buffer.toString('base64') }
+    source: { type: 'base64', media_type: 'image/jpeg', data: buf.toString('base64') }
   };
 }
 
@@ -2295,13 +2307,17 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
     content.push({ type: 'text', text: instructionPhotos });
   }
 
+  const resizedBuffers = await Promise.all(
+    photos.map(p => p.mimetype && p.mimetype !== 'application/pdf' ? resizePhotoForApi(p.buffer) : Promise.resolve(null))
+  );
+
   photos.forEach((photo, i) => {
     const c = (photoComments && photoComments[i] ? String(photoComments[i]).trim() : '');
     const label = c
       ? `Photo ${i + 1} — Annotation utilisateur : « ${c} »`
       : `Photo ${i + 1}`;
     content.push({ type: 'text', text: label });
-    content.push(fileToContent(photo));
+    content.push(fileToContent(photo, resizedBuffers[i]));
   });
 
   content.push({ type: 'text', text: prompt });
