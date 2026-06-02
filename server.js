@@ -2768,7 +2768,7 @@ app.get('/api/projets/list', requireAuth, async (req, res) => {
       location: (p.data && p.data.location) || '',
       surface: (p.data && p.data.surface) || '',
       visite_type: (p.data && p.data.visite_type) || null,
-      preview: (p.analysis || '').substring(0, 150) + '...'
+      preview: (p.analysis || '').replace(/^#+\s*/gm, '').replace(/\*\*/g, '').replace(/\*/g, '').replace(/---+/g, '').replace(/\n{2,}/g, '\n').trim().substring(0, 220)
     }));
     
     res.json({
