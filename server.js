@@ -3146,33 +3146,6 @@ app.get('/admin/feedbacks', async (req, res) => {
 });
 
 // Page utilisateurs
-// ── ADMIN : recharger les crédits d'un utilisateur ──────────────
-app.post('/api/admin/credits', async (req, res) => {
-  try {
-    const { token, email, credits, action } = req.body;
-    if (!token || token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Non autorisé' });
-    if (!email || credits === undefined) return res.status(400).json({ error: 'Email et crédits requis' });
-    const nb = parseInt(credits);
-    if (isNaN(nb) || nb < 0) return res.status(400).json({ error: 'Nombre invalide' });
-    let query, params;
-    if (action === 'set') {
-      query = 'UPDATE users SET credits = $1 WHERE LOWER(email) = LOWER($2) RETURNING id, email, nom, credits';
-      params = [nb, email];
-    } else {
-      // add (défaut)
-      query = 'UPDATE users SET credits = credits + $1 WHERE LOWER(email) = LOWER($2) RETURNING id, email, nom, credits';
-      params = [nb, email];
-    }
-    const result = await pool.query(query, params);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
-    const u = result.rows[0];
-    console.log(`[ADMIN] Crédits mis à jour — ${u.email} : ${u.credits} crédits`);
-    res.json({ success: true, email: u.email, nom: u.nom, credits: u.credits });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 app.get('/admin/users', async (req, res) => {
   try {
     const token = req.query.token;
@@ -3181,7 +3154,6 @@ app.get('/admin/users', async (req, res) => {
     const result = await pool.query(`
       SELECT u.id, u.email, u.nom, u.plan, u.created_at, u.last_login,
         COALESCE(u.nb_analyses, 0) AS nb_analyses,
-        COALESCE(u.credits, 0) AS credits,
         (SELECT COUNT(*) FROM projets WHERE user_email = u.email) AS nb_projets
       FROM users u
       ORDER BY u.created_at DESC
@@ -3194,110 +3166,58 @@ app.get('/admin/users', async (req, res) => {
       <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:-apple-system,sans-serif;background:#f5f7fb;padding:20px}
-        .container{max-width:1300px;margin:0 auto}
-        header{background:linear-gradient(135deg,#1a2f28,#3d7a68);color:white;padding:30px;border-radius:16px;margin-bottom:24px}
+        .container{max-width:1200px;margin:0 auto}
+        header{background:linear-gradient(135deg,#0066ff,#4d94ff);color:white;padding:30px;border-radius:16px;margin-bottom:24px}
         h1{font-size:26px}
         .section{background:white;padding:24px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.05);margin-bottom:20px}
         h2{font-size:18px;margin-bottom:18px}
         table{width:100%;border-collapse:collapse}
         th{background:#f5f7fb;padding:12px;text-align:left;font-size:12px;color:#5e6987;font-weight:600;border-bottom:2px solid #e8eef7;text-transform:uppercase}
-        td{padding:10px 12px;border-bottom:1px solid #f0f3f8;font-size:13px;vertical-align:middle}
+        td{padding:12px;border-bottom:1px solid #f0f3f8;font-size:14px}
         tr:hover{background:#f8faff}
         .plan{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600}
         .plan.gratuit{background:#e6f0ff;color:#0052cc}
         .plan.illimite{background:linear-gradient(135deg,#f0e6ff,#ffe6f5);color:#7c3aed}
-        .credits-badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:700}
-        .credits-ok{background:#e8f5f1;color:#2d7a58}
-        .credits-zero{background:#fef2f2;color:#dc2626}
+        .quota-ok{color:#0aa05a;font-weight:600}
+        .quota-warn{color:#f59e0b;font-weight:600}
+        .quota-max{color:#dc2626;font-weight:700}
         .tabs{display:flex;gap:10px;margin-bottom:20px}
         .tab{padding:10px 20px;background:white;border:1px solid #e8eef7;border-radius:10px;font-weight:600;color:#5e6987;text-decoration:none}
-        .tab.active{background:#3d7a68;color:white;border-color:#3d7a68}
-        .credit-form{display:inline-flex;align-items:center;gap:6px}
-        .credit-form input{width:52px;padding:4px 8px;border:1px solid #d0d8e8;border-radius:6px;font-size:12px;text-align:center}
-        .credit-form select{padding:4px 6px;border:1px solid #d0d8e8;border-radius:6px;font-size:11px}
-        .btn-credit{padding:4px 10px;background:#3d7a68;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer}
-        .btn-credit:hover{background:#2d5e50}
-        .toast{position:fixed;bottom:24px;right:24px;background:#1a2f28;color:white;padding:12px 20px;border-radius:10px;font-weight:600;font-size:14px;z-index:9999;display:none}
+        .tab.active{background:#0066ff;color:white;border-color:#0066ff}
       </style></head>
       <body><div class="container">
-        <header><h1>👥 Utilisateurs RénoExpert</h1><div style="font-size:13px;opacity:.8;margin-top:6px">${result.rows.length} comptes inscrits</div></header>
+        <header><h1>👥 Utilisateurs RénoExpert</h1></header>
         <div class="tabs">
           <a href="/admin/feedbacks?token=${encodeURIComponent(token)}" class="tab">📋 Feedbacks</a>
           <a href="/admin/users?token=${encodeURIComponent(token)}" class="tab active">👥 Utilisateurs</a>
         </div>
         <div class="section">
-          <h2>Liste des utilisateurs</h2>
+          <h2>Liste des utilisateurs (${result.rows.length})</h2>
           <table>
-            <thead><tr>
-              <th>Email</th><th>Nom</th><th>Plan</th>
-              <th>Crédits</th>
-              <th>Recharger</th>
-              <th>Analyses IA</th><th>Projets</th><th>Inscrit</th><th>Dernière co.</th>
-            </tr></thead>
+            <thead><tr><th>Email</th><th>Nom</th><th>Plan</th><th>Analyses IA</th><th>Projets sauv.</th><th>Inscrit le</th><th>Dernière connexion</th></tr></thead>
             <tbody>
               ${result.rows.map(u => {
                 const nbA = parseInt(u.nb_analyses || 0);
-                const nbC = parseInt(u.credits || 0);
                 let analysesClass = 'quota-ok';
                 if (u.plan !== 'illimite') {
                   if (nbA >= LIMITE_ANALYSES_GRATUIT) analysesClass = 'quota-max';
                   else if (nbA >= LIMITE_ANALYSES_GRATUIT - 1) analysesClass = 'quota-warn';
                 }
-                return \`
+                return `
                 <tr>
-                  <td><strong>\${u.email}</strong></td>
-                  <td>\${u.nom || '-'}</td>
-                  <td><span class="plan \${u.plan}">\${u.plan}</span></td>
-                  <td>
-                    <span class="credits-badge \${nbC > 0 ? 'credits-ok' : 'credits-zero'}" id="credits-\${u.id}">
-                      \${u.plan === 'illimite' ? '∞' : nbC + ' cr.'}
-                    </span>
-                  </td>
-                  <td>
-                    \${u.plan !== 'illimite' ? \`
-                    <div class="credit-form">
-                      <select id="action-\${u.id}"><option value="add">+</option><option value="set">=</option></select>
-                      <input type="number" id="nb-\${u.id}" value="3" min="0" max="100">
-                      <button class="btn-credit" onclick="recharger('\${u.email}','\${u.id}')">✓</button>
-                    </div>\` : '<span style="color:#9b8672;font-size:12px">—</span>'}
-                  </td>
-                  <td><span class="\${analysesClass}">\${nbA}\${u.plan !== 'illimite' ? ' / ' + LIMITE_ANALYSES_GRATUIT : ''}</span></td>
-                  <td>\${u.nb_projets}</td>
-                  <td>\${new Date(u.created_at).toLocaleDateString('fr-FR')}</td>
-                  <td>\${u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais'}</td>
+                  <td><strong>${u.email}</strong></td>
+                  <td>${u.nom || '-'}</td>
+                  <td><span class="plan ${u.plan}">${u.plan}</span></td>
+                  <td><span class="${analysesClass}">${nbA}${u.plan !== 'illimite' ? ` / ${LIMITE_ANALYSES_GRATUIT}` : ' (illimité)'}</span></td>
+                  <td><strong>${u.nb_projets}</strong></td>
+                  <td>${new Date(u.created_at).toLocaleDateString('fr-FR')}</td>
+                  <td>${u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais'}</td>
                 </tr>
-              \`;}).join('')}
+              `;}).join('')}
             </tbody>
           </table>
         </div>
-      </div>
-      <div class="toast" id="toast"></div>
-      <script>
-      async function recharger(email, userId) {
-        const action = document.getElementById('action-' + userId).value;
-        const nb = parseInt(document.getElementById('nb-' + userId).value);
-        if (isNaN(nb)) return;
-        try {
-          const r = await fetch('/api/admin/credits', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ token: '${token}', email, credits: nb, action })
-          });
-          const data = await r.json();
-          if (data.success) {
-            const badge = document.getElementById('credits-' + userId);
-            if (badge) { badge.textContent = data.credits + ' cr.'; badge.className = 'credits-badge ' + (data.credits > 0 ? 'credits-ok' : 'credits-zero'); }
-            const t = document.getElementById('toast');
-            t.textContent = '✅ ' + data.email + ' → ' + data.credits + ' crédits';
-            t.style.display = 'block';
-            setTimeout(() => { t.style.display='none'; }, 3000);
-          } else {
-            alert('Erreur : ' + data.error);
-          }
-        } catch(e) { alert('Erreur réseau'); }
-      }
-      </script>
-      </body></html>
+      </div></body></html>
     `);
   } catch (error) {
     res.status(500).send('Erreur: ' + error.message);
