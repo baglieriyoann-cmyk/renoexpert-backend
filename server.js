@@ -3521,7 +3521,10 @@ app.get('/admin/maintenance', async (req, res) => {
         (SELECT COUNT(*) FROM password_resets WHERE used = TRUE OR expires_at < NOW()) AS resets_expires
     `);
 
-    // 3. VACUUM FULL (hors transaction — connexion dédiée)
+    // 3. Réécriture du TOAST de projets pour forcer le nettoyage
+    await pool.query('UPDATE projets SET analysis = analysis');
+
+    // 4. VACUUM FULL (hors transaction — connexion dédiée)
     const vacuumClient = await pool.connect();
     try {
       await vacuumClient.query('VACUUM FULL ANALYZE');
