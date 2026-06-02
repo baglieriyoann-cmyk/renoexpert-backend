@@ -21,6 +21,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const pdfGen = require('./pdfGenerator');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2670,15 +2671,33 @@ app.post('/api/feedback', generalLimiter, async (req, res) => {
 // ROUTES PROJETS (avec auth + limite quota)
 // ============================================================
 
+async function compressPhotoBase64(base64str) {
+  try {
+    const raw = base64str.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(raw, 'base64');
+    const compressed = await sharp(buffer)
+      .resize({ width: 800, withoutEnlargement: true })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+    return 'data:image/jpeg;base64,' + compressed.toString('base64');
+  } catch {
+    return base64str;
+  }
+}
+
 app.post('/api/projets/save', requireAuth, async (req, res) => {
   try {
-    const { mode, titre, analysis, data, bien_id } = req.body;
+    let { mode, titre, analysis, data, bien_id } = req.body;
 
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
     }
 
     const bienIdVal = bien_id ? parseInt(bien_id) : null;
+
+    if (data && Array.isArray(data.photos) && data.photos.length > 0) {
+      data.photos = await Promise.all(data.photos.map(compressPhotoBase64));
+    }
 
     const result = await pool.query(
       `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id)
