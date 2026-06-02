@@ -172,6 +172,8 @@ const CREDIT_COSTS = {
 };
 // Crédits offerts à l'inscription (bêta)
 const CREDITS_BETA = 3;
+// Limite d'analyses affichée dans le dashboard admin (historique, avant système crédits)
+const LIMITE_ANALYSES_GRATUIT = 5;
 // Admin : crédits illimités (plan 'illimite')
 const MODES_SANS_PDF = []; // Plus de restriction PDF en bêta crédits
 
