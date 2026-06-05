@@ -40,7 +40,7 @@ app.use(cors({
   origin: function(origin, callback) {
     // Autorise les requêtes sans origin (apps mobiles, curl, Netlify proxy)
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.netlify.app')) {
+    if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.netlify.app') || origin.endsWith('.railway.app')) {
       return callback(null, true);
     }
     return callback(new Error('Origine non autorisée: ' + origin));
