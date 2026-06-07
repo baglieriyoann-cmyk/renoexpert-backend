@@ -1501,6 +1501,12 @@ Si un DPE est joint à la requête, lis-le et intègre SES VALEURS RÉELLES (cla
 ## Verdict 🎯
 [Acheter / Négocier (préciser le levier) / Passer son chemin — justification factuelle]
 
+ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE :
+Examine TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles soulevées, fissures, peinture écaillée, structure abîmée…), chiffre SYSTÉMATIQUEMENT la remise en état dans "Travaux à prévoir". Une terrasse en mauvais état représente souvent 3 000 à 15 000 € — ne jamais l'ignorer.
+
+ASSAINISSEMENT (si DPE fourni) :
+Lis la section assainissement du DPE. Si le bien est raccordé à un assainissement non collectif (fosse septique) et que le DPE ou les observations mentionnent une non-conformité, ajoute dans "Travaux urgents" : "Assainissement non collectif non conforme — remise aux normes obligatoire dans l'année suivant l'acquisition : 6 000 à 15 000 € selon configuration (microstation ou fosse toutes eaux + épandage)."
+
 Sois précis, chiffré, professionnel. Donne des prix 2025-2026.`,
 
   visite_locatif: `Tu es un expert en investissement locatif immobilier français. Analyse ce bien pour un acheteur-investisseur qui souhaite le mettre en location.
@@ -1588,6 +1594,12 @@ Régime demandé : [régime fourni par l'utilisateur]
 🟢 BON INVESTISSEMENT / 🟡 INVESTISSEMENT POSSIBLE AVEC TRAVAUX / 🔴 RENTABILITÉ INSUFFISANTE
 
 [Justification en 3-5 lignes + recommandation concrète : acheter / négocier à XX% / passer]
+
+ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE :
+Examine TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé, chiffre SYSTÉMATIQUEMENT la remise en état dans les travaux. Une terrasse dégradée représente souvent 3 000 à 15 000 € — ne jamais l'ignorer, c'est un poste directement visible et qui impacte le rendement locatif.
+
+ASSAINISSEMENT (si DPE fourni) :
+Lis la section assainissement du DPE. Si le bien est en assainissement non collectif (fosse septique) avec une non-conformité, ajoute dans "Travaux obligatoires" : "Assainissement non collectif non conforme — remise aux normes dans l'année suivant l'acquisition : 6 000 à 15 000 €" et intègre ce coût dans le tableau financier.
 
 Sois factuel, chiffré, professionnel. Base-toi sur les données fournies ET les photos. Prix 2025-2026.`,
 
@@ -1990,6 +2002,12 @@ PRIX DE MARCHÉ — SOURCES ET CALIBRAGE
 - Calibrage réel : une maison de 80 m² rénovée dans le centre vient d'être vendue 225 000 € (soit ~2 812 €/m², au-dessus du marché grâce à la rénovation). Tiens-en compte si le bien est de qualité comparable.
 - Pour toute autre commune, indique le prix m² médian "meilleursagents.com" si tu le connais avec une bonne probabilité ; sinon précise "donnée à confirmer sur meilleursagents.com".
 
+ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE
+Pour la section "Points d'amélioration et budget travaux indicatif" : analyse TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles décollées, garde-corps rouillé, peinture écaillée, fissures…), crée un poste dédié avec estimation chiffrée. Une terrasse en mauvais état : 3 000 à 15 000 € selon surface et matériaux. Ne jamais ignorer un espace extérieur dégradé.
+
+ASSAINISSEMENT (si DPE fourni)
+Lis la section assainissement du DPE. Si le bien est en assainissement non collectif (fosse septique) avec non-conformité mentionnée, ajoute dans la section travaux : "Assainissement non collectif non conforme — remise aux normes obligatoire dans l'année suivant l'acquisition : 6 000 à 15 000 € selon configuration." Intègre ce poste dans le récapitulatif budget travaux.
+
 STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 ==================================================
 
@@ -2096,6 +2114,12 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 - Travaux : Mois 2 à X
 - Commercialisation : Mois X à Y
 - Revente : Mois Z
+
+## Espaces extérieurs
+[Terrasses, façades, accès, cours — si visible en mauvais état sur les photos, chiffrer impérativement la remise en état]
+
+## Assainissement
+[Si le DPE mentionne un assainissement non collectif non conforme : obligation légale et coût de remise aux normes (6 000 à 15 000 €) — à intégrer dans le tableau financier prévisionnel]
 
 ## Recommandation finale
 🟢 GO / 🟡 GO avec négociation / 🔴 PASS
