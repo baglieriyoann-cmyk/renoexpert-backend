@@ -1997,17 +1997,23 @@ PRIX DE MARCHÉ — SOURCES ET CALIBRAGE
 - SOURCE DE RÉFÉRENCE : meilleursagents.com (cite-la dans la fiche). Compléter avec DVF si pertinent.
 - Pour l'estimation du prix de vente : utilise EN PRIORITÉ le bloc "DONNEES DE PRIX REELLES" fourni dans le contexte (prix saisi par l'agent et/ou ventes réelles DVF de la commune). C'est la base la plus fiable.
 - Si des données DVF sont fournies : pars du prix médian au m² du secteur, puis AJUSTE selon l'état réel du bien constaté sur les photos (un bien en bon état ou rénové se vend dans le HAUT de la fourchette, voire au-dessus de la médiane ; un bien à rénover, dans le bas). Ne livre JAMAIS la médiane brute comme prix d'un bien en bon état.
-- Si aucune donnée de prix n'est fournie : sois prudent et plutôt généreux, ne sous-estime JAMAIS, et précise clairement que l'agent doit valider avec sa connaissance du secteur.
+- Si aucune donnée de prix n'est fournie : sois prudent et plutôt généreux, ne sous-estime JAMAIS. Mentionne simplement que les estimations sont indicatives et basées sur les données de marché disponibles — sans interpeller l'agent nominativement ni lui demander de valider.
 - Donne ensuite une fourchette resserrée : prix bas (vente rapide) / prix juste / prix haut (bien optimisé), cohérente avec le m² retenu × la surface.
 - Calibrage réel : une maison de 80 m² rénovée dans le centre vient d'être vendue 225 000 € (soit ~2 812 €/m², au-dessus du marché grâce à la rénovation). Tiens-en compte si le bien est de qualité comparable.
 - Pour toute autre commune, indique le prix m² médian "meilleursagents.com" si tu le connais avec une bonne probabilité ; sinon précise "donnée à confirmer sur meilleursagents.com".
 
+OCCUPATION DU BIEN
+Ne mentionne JAMAIS si le bien est occupé ou libre sur la base des photos. C'est une information que seul l'agent et le vendeur connaissent. N'écris JAMAIS "La maison est habitée", "le bien est libre de toute occupation" ou tout équivalent déduit des images.
+
+CHAUFFAGE — LANGAGE ACCESSIBLE
+Pour le chauffage, utilise un langage compréhensible par un non-spécialiste. Évite les termes techniques opaques : préfère "radiateurs électriques (vieux modèle)" à "émetteurs électriques à effet Joule". Si le type d'équipement n'est pas clairement identifiable, décris-le simplement sans jargon.
+
 AMÉNAGEMENT DES COMBLES
-Si tu mentionnes l'aménagement des combles comme potentiel, précise IMPÉRATIVEMENT : "Attention : la transformation de combles en surface habitable augmente la valeur locative cadastrale du bien, ce qui peut entraîner une hausse de la taxe foncière. Les travaux doivent être déclarés à l'administration fiscale dans les 90 jours suivant leur achèvement." Ne parle JAMAIS de "potentiel d'extension sans emprise foncière supplémentaire" sans cette nuance.
+Si tu mentionnes l'aménagement des combles comme potentiel, précise : "Attention : la transformation de combles en surface habitable augmente la valeur locative cadastrale du bien, ce qui peut entraîner une hausse de la taxe foncière." Ne parle JAMAIS de "potentiel d'extension sans emprise foncière supplémentaire" sans cette nuance.
 Pour le TYPE DE PORTE DE GARAGE : ne présume pas le modèle (battante, sectionnelle, basculante, latérale…) sans le voir clairement sur les photos. Décris uniquement ce qui est visible ou utilise "porte de garage" sans précision de type.
 
 ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE
-Pour la section "Points d'amélioration et budget travaux indicatif" : analyse TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles décollées, garde-corps rouillé, peinture écaillée, fissures…), crée un poste dédié avec estimation chiffrée. Une terrasse en mauvais état : 3 000 à 15 000 € selon surface et matériaux. Ne jamais ignorer un espace extérieur dégradé.
+Pour la section "Points d'amélioration et budget travaux indicatif" : analyse TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles décollées, garde-corps rouillé, peinture écaillée, fissures…), crée un poste dédié avec estimation chiffrée. Une terrasse en mauvais état : 3 000 à 15 000 € selon surface et matériaux. Classe la terrasse en (Recommandé) ou (Optionnel) selon l'état — jamais en (Obligatoire). Ne jamais ignorer un espace extérieur dégradé.
 
 ASSAINISSEMENT (si DPE fourni)
 Lis la section assainissement du DPE. Si le bien est en assainissement non collectif (fosse septique) avec non-conformité mentionnée, ajoute dans la section travaux : "Assainissement non collectif non conforme — remise aux normes obligatoire dans l'année suivant l'acquisition : 6 000 à 15 000 € selon configuration." Intègre ce poste dans le récapitulatif budget travaux.
@@ -2041,12 +2047,12 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 [5 à 7 atouts numérotés. Intègre EXPLICITEMENT chaque plus-value cochée par l'utilisateur. Un atout = un paragraphe court, factuel.]
 
 ## Points d'amélioration et budget travaux indicatif
-[Pour chaque chantier détecté : un titre AVEC son niveau de priorité entre parenthèses — (Obligatoire), (Recommandé) ou (Optionnel). Une description courte, un tableau Poste/Coût avec une ligne TOTAL, et un "À retenir" en bloc citation (>) si point de vigilance. Applique RIGOUREUSEMENT les consignes métier ci-dessus (IPN, douche, cheminée, parquet).
+[Pour chaque chantier détecté : un titre AVEC son niveau de priorité entre parenthèses — (Obligatoire) UNIQUEMENT pour l'assainissement non conforme et les anomalies électriques présentant un risque de sécurité avéré, (Recommandé) pour tous les autres travaux utiles ou urgents, (Optionnel) pour les améliorations de confort et valorisation. NE PAS utiliser (Obligatoire) pour des travaux de confort ou d'esthétique, même très urgents. Une description courte, un tableau Poste/Coût avec une ligne TOTAL, et un "À retenir" en bloc citation (>) si point de vigilance. Applique RIGOUREUSEMENT les consignes métier ci-dessus (IPN, douche, cheminée, parquet).
 IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doivent apparaître en DERNIER dans cette section, précédés du titre "Rénovation énergétique (selon recommandations DPE — optionnel)" et introduits par : "Selon le DPE, deux packs de travaux permettraient d'améliorer la classe énergétique. Ces travaux sont facultatifs mais peuvent être financés par MaPrimeRénov' et l'éco-PTZ."]
 
 ## Récapitulatif budget travaux
 [Deux tableaux distincts :
-1. "Travaux prioritaires (obligatoires + recommandés)" : Travaux / Fourchette basse / Fourchette haute + ligne TOTAL
+1. "Travaux recommandés et prioritaires" : Travaux / Fourchette basse / Fourchette haute + ligne TOTAL
 2. "Travaux optionnels (valorisation + énergie)" : idem pour les postes optionnels dont les packs DPE]
 
 ## Prix de marché conseillé
@@ -2471,6 +2477,10 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     console.error('Erreur visite:', error);
 
     // Notification email en cas d'erreur (optionnel)
+    if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
+      return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+    }
+
     if (NOTIFICATION_EMAIL && BREVO_API_KEY) {
       sendEmail(NOTIFICATION_EMAIL, '⚠️ Erreur RénoExpert', emailTemplate(
         'Erreur technique',
@@ -2528,6 +2538,9 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0, dvf_utilise: !!dvf });
   } catch (error) {
     console.error('Erreur agent:', error);
+    if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
+      return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -2567,6 +2580,9 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
     res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
     console.error('Erreur marchand:', error);
+    if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
+      return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -3052,6 +3068,17 @@ app.post('/api/pdf/agent', generalLimiter, requireAuth, async (req, res) => {
     pdfGen.generateAgentPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
   } catch (error) {
     console.error('Erreur PDF agent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/pdf/agent-acheteur', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const { analysis, agence_nom, agent_nom, location, surface } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    pdfGen.generateAgentAcheteurPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
+  } catch (error) {
+    console.error('Erreur PDF agent-acheteur:', error);
     res.status(500).json({ error: error.message });
   }
 });
