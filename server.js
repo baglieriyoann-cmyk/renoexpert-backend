@@ -138,7 +138,7 @@ const generalLimiter = createRateLimiter({
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 52 }
+  limits: { fileSize: 20 * 1024 * 1024, files: 52 }
 });
 
 const anthropic = new Anthropic({
@@ -2002,6 +2002,10 @@ PRIX DE MARCHÉ — SOURCES ET CALIBRAGE
 - Calibrage réel : une maison de 80 m² rénovée dans le centre vient d'être vendue 225 000 € (soit ~2 812 €/m², au-dessus du marché grâce à la rénovation). Tiens-en compte si le bien est de qualité comparable.
 - Pour toute autre commune, indique le prix m² médian "meilleursagents.com" si tu le connais avec une bonne probabilité ; sinon précise "donnée à confirmer sur meilleursagents.com".
 
+AMÉNAGEMENT DES COMBLES
+Si tu mentionnes l'aménagement des combles comme potentiel, précise IMPÉRATIVEMENT : "Attention : la transformation de combles en surface habitable augmente la valeur locative cadastrale du bien, ce qui peut entraîner une hausse de la taxe foncière. Les travaux doivent être déclarés à l'administration fiscale dans les 90 jours suivant leur achèvement." Ne parle JAMAIS de "potentiel d'extension sans emprise foncière supplémentaire" sans cette nuance.
+Pour le TYPE DE PORTE DE GARAGE : ne présume pas le modèle (battante, sectionnelle, basculante, latérale…) sans le voir clairement sur les photos. Décris uniquement ce qui est visible ou utilise "porte de garage" sans précision de type.
+
 ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE
 Pour la section "Points d'amélioration et budget travaux indicatif" : analyse TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles décollées, garde-corps rouillé, peinture écaillée, fissures…), crée un poste dédié avec estimation chiffrée. Une terrasse en mauvais état : 3 000 à 15 000 € selon surface et matériaux. Ne jamais ignorer un espace extérieur dégradé.
 
@@ -2014,7 +2018,7 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 # Fiche commerciale
 
 ## Présentation du bien
-[3 à 5 lignes, ton sobre et haut de gamme, factuel. Pas de "magnifique opportunité", pas de "coup de cœur".]
+[3 à 5 lignes, ton sobre et haut de gamme, factuel. Pas de "magnifique opportunité", pas de "coup de cœur". Évite le mot "cosmétique" (connotation péjorative) — préfère "modernisation", "rafraîchissement", "mise au goût du jour".]
 
 ## Caractéristiques techniques
 | Critère | Détail |
@@ -2022,7 +2026,7 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 | Surface habitable | [m², source DPE si dispo] |
 | Surface Carrez/Boutin | [m², loi citée] |
 | Type | [maison de ville, appartement, etc.] |
-| Niveaux | [...] |
+| Niveaux | [Sous-sol et combles ne comptent PAS comme niveaux habitables sauf s'ils sont officiellement aménagés. Ex : "Plain-pied (RDC) — sous-sol complet — combles aménageables"] |
 | Pièces | [nombre + composition] |
 | État général | [...] |
 | Chauffage | [...] |
@@ -2037,25 +2041,28 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 [5 à 7 atouts numérotés. Intègre EXPLICITEMENT chaque plus-value cochée par l'utilisateur. Un atout = un paragraphe court, factuel.]
 
 ## Points d'amélioration et budget travaux indicatif
-[Pour chaque chantier optionnel détecté : un titre, une description courte, un tableau Poste/Coût avec une ligne TOTAL, et un "À retenir" en bloc citation (>) si point de vigilance. Applique RIGOUREUSEMENT les consignes métier ci-dessus (IPN, douche, cheminée, parquet).]
+[Pour chaque chantier détecté : un titre AVEC son niveau de priorité entre parenthèses — (Obligatoire), (Recommandé) ou (Optionnel). Une description courte, un tableau Poste/Coût avec une ligne TOTAL, et un "À retenir" en bloc citation (>) si point de vigilance. Applique RIGOUREUSEMENT les consignes métier ci-dessus (IPN, douche, cheminée, parquet).
+IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doivent apparaître en DERNIER dans cette section, précédés du titre "Rénovation énergétique (selon recommandations DPE — optionnel)" et introduits par : "Selon le DPE, deux packs de travaux permettraient d'améliorer la classe énergétique. Ces travaux sont facultatifs mais peuvent être financés par MaPrimeRénov' et l'éco-PTZ."]
 
-## Récapitulatif budget travaux optionnels
-[Tableau Travaux / Fourchette basse / Fourchette haute + ligne TOTAL.]
+## Récapitulatif budget travaux
+[Deux tableaux distincts :
+1. "Travaux prioritaires (obligatoires + recommandés)" : Travaux / Fourchette basse / Fourchette haute + ligne TOTAL
+2. "Travaux optionnels (valorisation + énergie)" : idem pour les postes optionnels dont les packs DPE]
 
 ## Prix de marché conseillé
-[Tableau Scénario / Prix / Prix/m² avec 3 lignes : Prix bas (vente rapide) / Prix médian (juste marché) / Prix haut (optimisé). Toujours en €, au-dessus du tableau cite "Source prix m² : meilleursagents.com — [valeur €/m²]". Justification en bullets : 3 à 5 points concrets, intégrant les plus-values cochées.]
+[Tableau Scénario / Prix / Prix/m² avec 3 lignes : Prix bas (vente rapide) / Prix médian (juste marché) / Prix haut (optimisé). Toujours en €, au-dessus du tableau cite "Source prix m² : meilleursagents.com — [valeur €/m²]". Justification en bullets : 3 à 5 points concrets, intégrant les plus-values cochées. ÉVITE les expressions vagues comme "bas-milieu" — préfère "dans la partie basse de la fourchette", "en dessous de la médiane", "au-dessus du prix médian du secteur".]
 
 ## Cible acheteur recommandée
 [Profil principal, secondaire, tertiaire. Chacun : âge, budget, motivation.]
 
 ## Stratégie de vente
-[6 à 8 actions concrètes numérotées : annonce, photos, home staging, traitement des objections, journée portes ouvertes, négociation balisée…]
+[6 à 8 actions concrètes numérotées. Pour les photos : recommande des "photos professionnelles" sans qualifier le caractère obligatoire (certains biens modestes ne le justifient pas). Pour chaque action : une phrase d'action + une phrase de justification.]
 
 ## Argumentaire pour les visites
 [5 phrases clés entre guillemets, courtes, percutantes, à utiliser pendant les visites. Pas d'emoji.]
 
 ## Notes finales
-[Mention "Tarifs travaux : estimations indicatives marché Hauts-de-France 2025 — non contractuels, devis artisans à confirmer." + "Source prix m² : ventes réelles DVF (data.gouv.fr) et estimation de l'agent." + si DPE manquant : "Le DPE peut être ajouté plus tard et la fiche sera régénérée."]`,
+[Mention "Tarifs travaux : estimations indicatives marché [département/région du bien d'après la localisation indiquée] 2025-2026 — non contractuels, à confirmer par devis d'artisans locaux." + "Source prix m² : ventes réelles DVF (data.gouv.fr) et estimation de l'agent." + si DPE manquant : "Le DPE peut être ajouté plus tard et la fiche sera régénérée."]`,
 
   marchand: `Tu es un expert marchand de biens français senior. Analyse ce bien pour une opération MB (marchand de biens) avec engagement de revente sous 5 ans, frais notaire MB 3% (article 1115 CGI).
 
@@ -3761,6 +3768,22 @@ app.get('/admin/maintenance/rebuild-projets', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ============================================================
+// GESTION D'ERREURS MULTER (fichier trop volumineux, etc.)
+// ============================================================
+app.use((err, req, res, next) => {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'Fichier trop volumineux (maximum 20 Mo par fichier). Compressez votre PDF avant de le charger.' });
+  }
+  if (err && err.code === 'LIMIT_FILE_COUNT') {
+    return res.status(413).json({ error: 'Trop de fichiers envoyés en une seule requête.' });
+  }
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Requête trop volumineuse. Réduisez la taille des fichiers.' });
+  }
+  next(err);
 });
 
 // ============================================================
