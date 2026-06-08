@@ -1045,10 +1045,69 @@ function generateExpressPDF(data, res) {
   doc.end();
 }
 
+// Retire les sections réservées à l'agent (stratégie, cible acheteur, argumentaire)
+function stripAgentOnlySections(analysis) {
+  const sectionsToRemove = ['Cible acheteur', 'Stratégie de vente', 'Argumentaire pour les visites'];
+  const lines = analysis.split('\n');
+  const result = [];
+  let skip = false;
+  for (const line of lines) {
+    if (/^#{1,3}\s/.test(line)) {
+      skip = sectionsToRemove.some(s => line.toLowerCase().includes(s.toLowerCase()));
+    }
+    if (!skip) result.push(line);
+  }
+  return result.join('\n');
+}
+
+function generateAgentAcheteurPDF(data, res) {
+  const { analysis, agence_nom, agent_nom, location, surface } = data;
+  const filtered = stripAgentOnlySections(analysis);
+  const cleaned = simplifyTerms(filtered);
+
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Rapport Bien - RénoExpert' } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="rapport-bien.pdf"');
+  doc.pipe(res);
+
+  fillBackground(doc);
+
+  drawCanvaHeader(doc, {
+    titleMain: 'Rapport Bien',
+    titleSub: `Présentation par ${agence_nom || 'votre agence'}`
+  });
+
+  drawCanvaHeaderTable(doc, [
+    { title: 'Agence', headerColor: COLORS.mintGreen, content: agence_nom || 'Non précisée' },
+    { title: 'Agent', headerColor: COLORS.creamYellow, content: agent_nom || 'Non précisé' },
+    { title: 'Bien situé', headerColor: COLORS.coralRed, content: location || 'Non précisé' },
+    { title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' }
+  ]);
+
+  renderContent(doc, cleaned);
+
+  doc.moveDown(0.5);
+  drawColoredCard(doc, {
+    title: 'Contact pour ce bien',
+    content: `${agent_nom || 'Votre agent'} — ${agence_nom || 'Agence'}\nPour planifier une visite ou obtenir plus d'informations.`,
+    bgColor: COLORS.mintGreenBg,
+    textColor: COLORS.mintGreenDark
+  });
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(i);
+    drawCanvaFooter(doc, i + 1, range.count);
+  }
+
+  doc.end();
+}
+
 module.exports = {
   generateVisitePDF,
   generateReparationPDF,
   generateAgentPDF,
+  generateAgentAcheteurPDF,
   generateMarchandPDF,
   generateExpressPDF
 };
