@@ -177,7 +177,7 @@ const CREDIT_COSTS = {
 // Crédits offerts à l'inscription (bêta)
 const CREDITS_BETA = 3;
 // Limite d'analyses affichée dans le dashboard admin (historique, avant système crédits)
-const LIMITE_ANALYSES_GRATUIT = 5;
+const LIMITE_ANALYSES_GRATUIT = 10;
 // Nombre max de projets sauvegardés pour les utilisateurs non-illimités
 const MAX_PROJETS_GRATUIT = 10;
 // Admin : crédits illimités (plan 'illimite')
