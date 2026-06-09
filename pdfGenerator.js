@@ -1103,11 +1103,55 @@ function generateAgentAcheteurPDF(data, res) {
   doc.end();
 }
 
+function generateAgentVendeurPDF(data, res) {
+  const { analysis, agence_nom, agent_nom, location, surface } = data;
+  const filtered = stripAgentOnlySections(analysis);
+  const cleaned = simplifyTerms(filtered);
+
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Document Propriétaire - RénoExpert' } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="rapport-vendeur.pdf"');
+  doc.pipe(res);
+
+  fillBackground(doc);
+
+  drawCanvaHeader(doc, {
+    titleMain: 'Document Propriétaire',
+    titleSub: `Évaluation par ${agence_nom || 'votre agence'}`
+  });
+
+  drawCanvaHeaderTable(doc, [
+    { title: 'Agence', headerColor: COLORS.mintGreen, content: agence_nom || 'Non précisée' },
+    { title: 'Agent', headerColor: COLORS.creamYellow, content: agent_nom || 'Non précisé' },
+    { title: 'Bien situé', headerColor: COLORS.coralRed, content: location || 'Non précisé' },
+    { title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' }
+  ]);
+
+  renderContent(doc, cleaned);
+
+  doc.moveDown(0.5);
+  drawColoredCard(doc, {
+    title: 'Votre bien — synthèse',
+    content: `Document remis par ${agent_nom || 'votre agent'} — ${agence_nom || 'Agence'}\nCe rapport synthétise l'évaluation de votre bien et les travaux recommandés avant mise en vente.`,
+    bgColor: COLORS.creamYellowBg,
+    textColor: COLORS.creamYellowDark
+  });
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(i);
+    drawCanvaFooter(doc, i + 1, range.count);
+  }
+
+  doc.end();
+}
+
 module.exports = {
   generateVisitePDF,
   generateReparationPDF,
   generateAgentPDF,
   generateAgentAcheteurPDF,
+  generateAgentVendeurPDF,
   generateMarchandPDF,
   generateExpressPDF
 };
