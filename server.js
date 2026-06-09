@@ -178,6 +178,8 @@ const CREDIT_COSTS = {
 const CREDITS_BETA = 3;
 // Limite d'analyses affichée dans le dashboard admin (historique, avant système crédits)
 const LIMITE_ANALYSES_GRATUIT = 5;
+// Nombre max de projets sauvegardés pour les utilisateurs non-illimités
+const MAX_PROJETS_GRATUIT = 10;
 // Admin : crédits illimités (plan 'illimite')
 
 // ============================================================
@@ -784,6 +786,9 @@ function getCreditCost(req) {
   if (req.path.includes('/api/refine/express')) return CREDIT_COSTS.express;
   if (req.path.includes('/api/analyze/reparation')) return CREDIT_COSTS.reparation;
   if (req.path.includes('/api/annonce')) return CREDIT_COSTS.annonce;
+  if (req.path.includes('/api/refine/agent')) return 1;
+  if (req.path.includes('/api/pdf/agent-acheteur')) return 1;
+  if (req.path.includes('/api/pdf/agent-vendeur')) return 1;
   return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
 }
 
@@ -915,9 +920,13 @@ async function requireSiret(req, res, next) {
   });
 }
 
-// Affinement : libre pour tous dès qu'on a des crédits (pas de coût supplémentaire pour affiner)
+// Affinement : réservé au plan illimité (pas de coût crédits, mais accès restreint)
 function requirePaidForRefine(req, res, next) {
-  return next(); // L'affinement ne coûte plus de crédits supplémentaires
+  if (req.user.plan === 'illimite') return next();
+  return res.status(403).json({
+    error: 'L\'affinement des résultats est réservé au plan Illimité. Contactez-nous pour y accéder.',
+    code: 'REFINE_RESERVE_PAYANT'
+  });
 }
 async function incrementAnalysesCounter(userId, mode, creditCost) {
   try {
@@ -1463,7 +1472,7 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
 const PROMPTS = {
   visite: `Tu es un expert immobilier français senior. Analyse les photos d'un bien immobilier pour un acheteur (résidence principale ou secondaire).
 
-Si un DPE est joint à la requête, lis-le et intègre SES VALEURS RÉELLES (classe, kWh/m²/an, GES, surface Carrez/Boutin) dans le diagnostic. Sinon, estime la classe probable à partir des photos (matériaux, systèmes de chauffage visibles, année apparente).
+Si un dossier de diagnostics est joint à la requête, lis-le et intègre SES VALEURS RÉELLES (classe énergie, kWh/m²/an, GES, surface habitable) dans le diagnostic. Sinon, estime la classe probable à partir des photos (matériaux, systèmes de chauffage visibles, année apparente).
 
 # 🏠 Diagnostic Visite Immobilière
 
@@ -1504,8 +1513,8 @@ Si un DPE est joint à la requête, lis-le et intègre SES VALEURS RÉELLES (cla
 ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE :
 Examine TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles soulevées, fissures, peinture écaillée, structure abîmée…), chiffre SYSTÉMATIQUEMENT la remise en état dans "Travaux à prévoir". Une terrasse en mauvais état représente souvent 3 000 à 15 000 € — ne jamais l'ignorer.
 
-ASSAINISSEMENT (si DPE fourni) :
-Lis la section assainissement du DPE. Si le bien est raccordé à un assainissement non collectif (fosse septique) et que le DPE ou les observations mentionnent une non-conformité, ajoute dans "Travaux urgents" : "Assainissement non collectif non conforme — remise aux normes obligatoire dans l'année suivant l'acquisition : 6 000 à 15 000 € selon configuration (microstation ou fosse toutes eaux + épandage)."
+ASSAINISSEMENT (si dossier de diagnostics fourni) :
+Lis la section assainissement du dossier de diagnostics. Si le bien est raccordé à un assainissement non collectif (fosse septique) et que le DPE ou les observations mentionnent une non-conformité, ajoute dans "Travaux urgents" : "Assainissement non collectif non conforme — remise aux normes obligatoire dans l'année suivant l'acquisition : 6 000 à 15 000 € selon configuration (microstation ou fosse toutes eaux + épandage)."
 
 Sois précis, chiffré, professionnel. Donne des prix 2025-2026.`,
 
@@ -1517,7 +1526,7 @@ CONTEXTE RÉGLEMENTAIRE OBLIGATOIRE À INTÉGRER :
 - À partir du 1er janv. 2028 : interdiction pour les logements classés E
 - Pour louer durablement et sans risque légal : le bien DOIT atteindre au moins la classe D (idéalement C)
 
-Si un DPE est joint, utilise SES VALEURS RÉELLES. Sinon, estime la classe probable d'après les photos et l'année de construction visible.
+Si un dossier de diagnostics est joint, utilise SES VALEURS RÉELLES. Sinon, estime la classe probable d'après les photos et l'année de construction visible.
 
 STRUCTURE OBLIGATOIRE :
 
@@ -1598,8 +1607,8 @@ Régime demandé : [régime fourni par l'utilisateur]
 ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE :
 Examine TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé, chiffre SYSTÉMATIQUEMENT la remise en état dans les travaux. Une terrasse dégradée représente souvent 3 000 à 15 000 € — ne jamais l'ignorer, c'est un poste directement visible et qui impacte le rendement locatif.
 
-ASSAINISSEMENT (si DPE fourni) :
-Lis la section assainissement du DPE. Si le bien est en assainissement non collectif (fosse septique) avec une non-conformité, ajoute dans "Travaux obligatoires" : "Assainissement non collectif non conforme — remise aux normes dans l'année suivant l'acquisition : 6 000 à 15 000 €" et intègre ce coût dans le tableau financier.
+ASSAINISSEMENT (si dossier de diagnostics fourni) :
+Lis la section assainissement du dossier de diagnostics. Si le bien est en assainissement non collectif (fosse septique) avec une non-conformité, ajoute dans "Travaux obligatoires" : "Assainissement non collectif non conforme — remise aux normes dans l'année suivant l'acquisition : 6 000 à 15 000 €" et intègre ce coût dans le tableau financier.
 
 Sois factuel, chiffré, professionnel. Base-toi sur les données fournies ET les photos. Prix 2025-2026.`,
 
@@ -1949,9 +1958,9 @@ RÈGLES DE STYLE STRICTES (le PDF est rendu en Helvetica WinAnsi) :
 - Les montants sont en € (jamais "EUR"). Format : "1 250 €", "152 000 €", "2 502 €/m²".
 - Aucun terme anglais cliché ("home staging", "must have"…) sauf si vraiment intraduisible.
 
-EXPLOITATION DU DPE (si fourni) :
-- Si un DPE (PDF ou image) est joint, EXTRAIS-EN les valeurs réelles et utilise-les TELLES QUELLES, sans estimation :
-  * Surface loi Carrez / loi Boutin (avec mention de la loi appliquée)
+EXPLOITATION DU DOSSIER DE DIAGNOSTICS (si fourni) :
+- Si un dossier de diagnostics (PDF ou image) est joint, EXTRAIS-EN les valeurs réelles et utilise-les TELLES QUELLES, sans estimation :
+  * Surface habitable (pour une maison individuelle) ou Surface privative Loi Carrez (pour un appartement en copropriété) — ne jamais écrire "Loi Boutin" (ce terme n'apparaît pas dans les DPE)
   * Surface habitable précise
   * Classe énergie (A à G) + consommation kWh/m²/an
   * Classe GES (A à G) + émissions kgCO2/m²/an
@@ -1959,8 +1968,8 @@ EXPLOITATION DU DPE (si fourni) :
   * Année de construction si indiquée
   * Date de réalisation du DPE et durée de validité restante
 - Sans DPE : donne une estimation prudente clairement marquée "(estimé)".
-- Mentionne explicitement les surfaces DPE : elles sont opposables et rassurent l'acheteur.
-- Si le DPE manque, indique en fin de fiche : "Le DPE peut être ajouté ultérieurement, la fiche sera régénérée avec les données officielles."
+- Mentionne explicitement les surfaces issues du dossier diagnostics : elles sont opposables et rassurent l'acheteur.
+- Si le dossier diagnostics manque, indique en fin de fiche : "Le dossier de diagnostics peut être ajouté ultérieurement, la fiche sera régénérée avec les données officielles."
 
 PLUS-VALUES À EXPLOITER (champ "plus_values" du brief) :
 - Pour chaque plus-value cochée (garage, parking, piscine, véranda, jardin, terrasse, balcon, cave, dépendance, climatisation, panneaux solaires, cheminée…), ajoute UNE phrase forte dans "Atouts" et chiffre l'impact estimé sur le prix dans "Prix de marché" (ex : "garage fermé : +5 à 8 000 €", "véranda 15 m² : +8 000 à 12 000 €", "piscine enterrée : +15 à 25 000 € selon état").
@@ -1989,7 +1998,7 @@ DÉMONTAGE DE CHEMINÉE DÉCORATIVE
 PARQUET ANCIEN
 - NE JAMAIS conseiller de démonter un parquet ancien s'il est en bon état (lames non déformées, pas d'attaque d'insectes, pas de pourriture). C'est une bêtise économique et patrimoniale.
 - Solution recommandée : pose d'une SOUS-COUCHE acoustique/d'égalisation directement par-dessus, puis pose d'un parquet flottant neuf (ou stratifié haut de gamme).
-- Alternative noble : ponçage + vitrification du parquet d'origine (500–900 €).
+- Alternative noble : ponçage + vitrification du parquet d'origine (500–900 €) — classe TOUJOURS ce poste en (Optionnel), jamais en (Recommandé), sauf si le parquet est manifestement en très mauvais état (lames gondolées, taches profondes, finition totalement usée).
 - Ne propose la dépose que si l'ancien parquet est réellement abîmé.
 
 PRIX DE MARCHÉ — SOURCES ET CALIBRAGE
@@ -2014,6 +2023,7 @@ Pour le TYPE DE PORTE DE GARAGE : ne présume pas le modèle (battante, sectionn
 
 ESPACES EXTÉRIEURS — RÈGLE IMPÉRATIVE
 Pour la section "Points d'amélioration et budget travaux indicatif" : analyse TOUTES les photos montrant un espace extérieur (terrasse, balcon, façade, accès, cour, jardin). Si l'état est dégradé (dalles décollées, garde-corps rouillé, peinture écaillée, fissures…), crée un poste dédié avec estimation chiffrée. Une terrasse en mauvais état : 3 000 à 15 000 € selon surface et matériaux. Classe la terrasse en (Recommandé) ou (Optionnel) selon l'état — jamais en (Obligatoire). Ne jamais ignorer un espace extérieur dégradé.
+RAVALEMENT DE FAÇADE : N'inclus JAMAIS un poste "ravalement de façade" dans le budget si les photos ne montrent PAS clairement une façade dégradée (fissures visibles, peinture écaillée en grande surface, enduit décollé, désordres structurels) ET si le dossier de diagnostics ne le signale pas. Ne jamais inventer ce poste sur la seule base de l'âge du bien ou d'une hypothèse générale.
 
 ASSAINISSEMENT (si DPE fourni)
 Lis la section assainissement du DPE. Si le bien est en assainissement non collectif (fosse septique) avec non-conformité mentionnée, ajoute dans la section travaux : "Assainissement non collectif non conforme — remise aux normes obligatoire dans l'année suivant l'acquisition : 6 000 à 15 000 € selon configuration." Intègre ce poste dans le récapitulatif budget travaux.
@@ -2029,8 +2039,8 @@ STRUCTURE DE SORTIE (Markdown strict, sans emoji)
 ## Caractéristiques techniques
 | Critère | Détail |
 | --- | --- |
-| Surface habitable | [m², source DPE si dispo] |
-| Surface Carrez/Boutin | [m², loi citée] |
+| Surface habitable | [m², source DPE/diagnostics si dispo] |
+| Surface Loi Carrez | [m² — uniquement si appartement en copropriété ; omettre cette ligne pour une maison] |
 | Type | [maison de ville, appartement, etc.] |
 | Niveaux | [Sous-sol et combles ne comptent PAS comme niveaux habitables sauf s'ils sont officiellement aménagés. Ex : "Plain-pied (RDC) — sous-sol complet — combles aménageables"] |
 | Pièces | [nombre + composition] |
@@ -2052,11 +2062,11 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 
 ## Récapitulatif budget travaux
 [Deux tableaux distincts :
-1. "Travaux recommandés et prioritaires" : Travaux / Fourchette basse / Fourchette haute + ligne TOTAL
+1. "Travaux recommandés" : Travaux / Fourchette basse / Fourchette haute + ligne TOTAL
 2. "Travaux optionnels (valorisation + énergie)" : idem pour les postes optionnels dont les packs DPE]
 
 ## Prix de marché conseillé
-[Tableau Scénario / Prix / Prix/m² avec 3 lignes : Prix bas (vente rapide) / Prix médian (juste marché) / Prix haut (optimisé). Toujours en €, au-dessus du tableau cite "Source prix m² : meilleursagents.com — [valeur €/m²]". Justification en bullets : 3 à 5 points concrets, intégrant les plus-values cochées. ÉVITE les expressions vagues comme "bas-milieu" — préfère "dans la partie basse de la fourchette", "en dessous de la médiane", "au-dessus du prix médian du secteur".]
+[Fourchette de prix en deux lignes : Prix bas (vente rapide) et Prix haut (bien optimisé/mis en valeur). Toujours en €. Au-dessus, cite "Source prix m² : ventes réelles DVF (data.gouv.fr) et données de marché — [valeur €/m²]". Justification en bullets : 3 à 5 points concrets qui expliquent le positionnement (état du bien, plus-values, localisation, travaux à prévoir). ÉVITE les tableaux à 3 colonnes Scénario/Prix/Prix m² — donne une fourchette claire avec ses justificatifs. ÉVITE les expressions vagues comme "bas-milieu" — préfère "dans la partie basse de la fourchette", "en dessous de la médiane", "au-dessus du prix médian du secteur".]
 
 ## Cible acheteur recommandée
 [Profil principal, secondaire, tertiaire. Chacun : âge, budget, motivation.]
@@ -2068,7 +2078,7 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 [5 phrases clés entre guillemets, courtes, percutantes, à utiliser pendant les visites. Pas d'emoji.]
 
 ## Notes finales
-[Mention "Tarifs travaux : estimations indicatives marché [département/région du bien d'après la localisation indiquée] 2025-2026 — non contractuels, à confirmer par devis d'artisans locaux." + "Source prix m² : ventes réelles DVF (data.gouv.fr) et estimation de l'agent." + si DPE manquant : "Le DPE peut être ajouté plus tard et la fiche sera régénérée."]`,
+[Mention "Tarifs travaux : estimations indicatives marché [département/région du bien d'après la localisation indiquée] 2025-2026 — non contractuels, à confirmer par devis d'artisans locaux." + "Source prix m² : ventes réelles DVF (data.gouv.fr) et estimation de l'agent." + si dossier diagnostics manquant : "Le dossier de diagnostics peut être ajouté ultérieurement, la fiche sera régénérée avec les données officielles."]`,
 
   marchand: `Tu es un expert marchand de biens français senior. Analyse ce bien pour une opération MB (marchand de biens) avec engagement de revente sous 5 ans, frais notaire MB 3% (article 1115 CGI).
 
@@ -2153,12 +2163,16 @@ Aucune procédure technique, aucune explication. Prix 2025-2026.`,
   annonce: `Tu es un expert en rédaction d'annonces immobilières qui VENDENT. À partir des informations du bien et de l'analyse fournie, rédige des annonces prêtes à publier, optimisées pour convertir.
 
 RÈGLES DE STYLE :
-- Pas d'emojis dans le corps des annonces (sauf si demandé), ton professionnel et chaleureux.
+- Pas d'emojis dans le corps des annonces, ton professionnel et chaleureux.
 - Phrases courtes, percutantes. On donne envie de visiter.
-- Met en avant les ATOUTS et le POTENTIEL, sois honnête (ne mens pas sur l'état).
+- L'annonce doit s'OUVRIR sur le point le plus vendeur et distinctif du bien (cadre, luminosité, volumes, emplacement, caractère architectural…). Ne commence JAMAIS par un équipement annexe (garage, parking) sauf si c'est véritablement l'atout principal.
+- Met en avant les ATOUTS et le POTENTIEL du bien. Sois positif et vendeur.
 - Utilise les vrais chiffres fournis (surface, pièces, DPE si dispo).
-- Termine par un appel à l'action ("Contactez l'agence pour une visite").
-- N'invente PAS d'informations absentes (nombre de chambres, etc.) : reste sur ce qui est fourni.
+- NE MENTIONNE PAS les points négatifs (travaux, non-conformités, chauffage vétuste, assainissement) dans le corps de l'annonce. Ces éléments figurent uniquement dans les caractéristiques techniques ou dans une mention sobre à la toute fin si vraiment nécessaire.
+- Si l'assainissement non collectif doit être mentionné, une seule ligne neutre suffit en fin d'annonce : "Assainissement individuel — mise en conformité à prévoir."
+- Le chauffage fioul, les travaux de peinture ou autres postes de rafraîchissement : JAMAIS dans le corps de l'annonce, uniquement dans les caractéristiques techniques.
+- Termine par un appel à l'action ("Contactez l'agence pour organiser une visite").
+- N'invente PAS d'informations absentes : reste sur ce qui est fourni.
 
 PRODUIS EXACTEMENT CETTE STRUCTURE EN MARKDOWN :
 
@@ -2166,10 +2180,10 @@ PRODUIS EXACTEMENT CETTE STRUCTURE EN MARKDOWN :
 [Un titre court et vendeur, max 70 caractères, avec le type de bien + atout principal + ville]
 
 ## Annonce LeBonCoin
-[Texte direct et efficace, 150-250 mots. Style accessible, grand public. Liste les caractéristiques clés. Met en avant le rapport qualité/prix ou le potentiel.]
+[Texte direct et efficace, 150-250 mots. Style accessible, grand public. Ouvre sur l'atout distinctif du bien. Décris les espaces et les points forts. Pas de liste de défauts.]
 
 ## Annonce SeLoger / site d'agence
-[Texte plus soigné et professionnel, 200-300 mots. Vocabulaire immobilier de qualité, structure claire : accroche, description des espaces, atouts, environnement, conclusion avec appel à l'action.]
+[Texte plus soigné et professionnel, 200-300 mots. Vocabulaire immobilier de qualité, structure claire : accroche sur l'atout principal, description des espaces, atouts, localisation et accessibilité, conclusion avec appel à l'action. Aucun point négatif dans le corps.]
 
 ## Version courte (réseaux sociaux)
 [2-3 phrases percutantes pour un post Facebook/Instagram, avec 3-4 hashtags pertinents.]
@@ -2446,18 +2460,25 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
   }
 });
 
-app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent } = req.body;
+    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
+    const assainissementFiles = (req.files && req.files.assainissement) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 20) return res.status(400).json({ error: 'Maximum 20 photos autorisées pour cette analyse.' });
     const isLocatif = visite_type === 'locatif';
     const dpeNote = dpeFiles.length > 0
-      ? `\nUn DPE du bien est joint (document avant les photos). Utilise SES VALEURS RÉELLES.\n`
-      : `\nAucun DPE fourni — estime la classe probable à partir des photos et de l'année de construction visible.\n`;
-    let context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n${dpeNote}`;
+      ? `\nUn dossier de diagnostics est joint (document avant les photos). Utilise SES VALEURS RÉELLES (surface habitable, classe énergie, GES, assainissement).\n`
+      : `\nAucun dossier de diagnostics fourni — estime la classe probable à partir des photos et de l'année de construction visible.\n`;
+    const assainNote = assainissementFiles.length > 0
+      ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires avec leurs coûts dans la section travaux urgents.\n`
+      : '';
+    const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
+      ? `\nSpécifications assainissement transmises par le client : ${assainissement_notes.trim()}\n`
+      : '';
+    let context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n${dpeNote}${assainNote}${assainNotesBlock}`;
     if (isLocatif) {
       context += prix_achat ? `Prix d'achat envisagé : ${prix_achat} €\n` : '';
       context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
@@ -2470,7 +2491,8 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     context += '\n' + precisionsBlock(precisions);
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await analyzeWithClaude(prompt, photos, context, dpeFiles, photoComments);
+    const extraDocs = [...dpeFiles, ...assainissementFiles];
+    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -2509,16 +2531,23 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
+    const assainissementFiles = (req.files && req.files.assainissement) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
     const dpeNote = dpeFiles.length > 0
-      ? `\nUn DPE du bien est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — pas d'estimation.\n`
-      : `\nAucun DPE fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le DPE peut être ajouté ultérieurement et la fiche régénérée.\n`;
+      ? `\nUn dossier de diagnostics est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — surface habitable, classe énergie, GES, assainissement — pas d'estimation.\n`
+      : `\nAucun dossier de diagnostics fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le dossier peut être ajouté ultérieurement et la fiche régénérée.\n`;
+    const assainNote = assainissementFiles.length > 0
+      ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires avec leurs coûts dans la fiche.\n`
+      : '';
+    const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
+      ? `\nSpécifications assainissement transmises par l'agent : ${assainissement_notes.trim()}\n`
+      : '';
     const pvBlock = plus_values && plus_values.trim()
       ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
       : '';
@@ -2531,9 +2560,10 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
 
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, dpeFiles, photoComments);
+    const extraDocs = [...dpeFiles, ...assainissementFiles];
+    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0, dvf_utilise: !!dvf });
   } catch (error) {
@@ -2545,16 +2575,23 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
   }
 });
 
-app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent } = req.body;
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
+    const assainissementFiles = (req.files && req.files.assainissement) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
     const dpeNote = dpeFiles.length > 0
-      ? `\nDPE joint — utilise SES VALEURS RÉELLES (classe, kWh/m²/an, GES) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB.\n`
+      ? `\nDossier de diagnostics joint — utilise SES VALEURS RÉELLES (classe, kWh/m²/an, GES, assainissement) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB.\n`
       : `\nAucun DPE fourni — estime la classe probable d'après les photos et l'année de construction.\n`;
+    const assainNote = assainissementFiles.length > 0
+      ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires et leur coût dans le tableau financier MB.\n`
+      : '';
+    const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
+      ? `\nSpécifications assainissement : ${assainissement_notes.trim()}\n`
+      : '';
     // Vraies données de prix DVF pour estimer la revente de façon fiable
     const cp = extraireCodePostal(location);
     const nomCommune = extraireNomCommune(location);
@@ -2567,14 +2604,15 @@ Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
 Stratégie : ${strategie}
 Nombre de lots envisagés : ${nb_lots}
-${dpeNote}
+${dpeNote}${assainNote}${assainNotesBlock}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus AJUSTÉES À LA HAUSSE pour un bien rénové (un bien refait à neuf se vend dans le haut de la fourchette du secteur, voire au-dessus de la médiane).
 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, dpeFiles, photoComments);
+    const extraDocs = [...dpeFiles, ...assainissementFiles];
+    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
@@ -2643,7 +2681,7 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
   }
 });
 
-app.post('/api/refine/agent', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -2759,6 +2797,19 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
+    }
+
+    if (req.user.plan !== 'illimite') {
+      const countCheck = await pool.query(
+        'SELECT COUNT(*) FROM projets WHERE user_email = $1',
+        [req.user.email]
+      );
+      if (parseInt(countCheck.rows[0].count) >= MAX_PROJETS_GRATUIT) {
+        return res.status(403).json({
+          error: `Limite de ${MAX_PROJETS_GRATUIT} projets sauvegardés atteinte. Supprimez un projet existant pour en créer un nouveau.`,
+          code: 'PROJ_QUOTA_EXCEEDED'
+        });
+      }
     }
 
     const bienIdVal = bien_id ? parseInt(bien_id) : null;
@@ -3072,13 +3123,26 @@ app.post('/api/pdf/agent', generalLimiter, requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/pdf/agent-acheteur', generalLimiter, requireAuth, async (req, res) => {
+app.post('/api/pdf/agent-acheteur', generalLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    await deductCredits(req.user.id, req.creditCost || 1);
     pdfGen.generateAgentAcheteurPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
   } catch (error) {
     console.error('Erreur PDF agent-acheteur:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/pdf/agent-vendeur', generalLimiter, requireAuth, checkCredits, async (req, res) => {
+  try {
+    const { analysis, agence_nom, agent_nom, location, surface } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    await deductCredits(req.user.id, req.creditCost || 1);
+    pdfGen.generateAgentVendeurPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
+  } catch (error) {
+    console.error('Erreur PDF agent-vendeur:', error);
     res.status(500).json({ error: error.message });
   }
 });
