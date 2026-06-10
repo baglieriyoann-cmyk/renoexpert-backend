@@ -1675,8 +1675,8 @@ CHRONOLOGIE GÉNÉRALE D'UN CHANTIER
 7. Portes coulissantes / de placard / blocs-porte de finition EN DERNIER (après sol + peinture). Le dormant d'une porte battante classique, lui, se pose avec la ferraille.
 
 ORDRE PEINTURE / SOL — règle capitale
-- Parquet (bois/PVC/stratifié) : peinture complète d'abord (sous-couche + 2 couches), parquet en DERNIER.
-- Carrelage : carrelage + joints + plinthes d'abord, protection bâche/carton, PUIS peinture. (Jamais peindre avant de carreler.)
+- Parquet (bois/PVC/stratifié) : peinture complète d'abord (sous-couche + 2 couches), parquet en DERNIER. Si le parquet est DÉJÀ posé : protection intégrale (bâches épaisses + scotch de masquage) avant toute opération peinture.
+- Carrelage : règle à mentionner UNIQUEMENT si du carrelage est présent ou prévu dans les photos. Carrelage + joints + plinthes d'abord, protection bâche/carton, PUIS peinture. (Jamais peindre avant de carreler.) Ne pas inclure cette règle si la pièce ne comporte pas de carrelage.
 - Ragréage toujours avant peinture (sinon projections sur murs finis).
 
 ASPIRATION & ALIGNEMENT
@@ -1698,30 +1698,33 @@ PLACO / ISOLATION / CLOISONS
 - Pare-vapeur : laine revêtue KRAFT côté intérieur, le kraft suffit. Pas de film polyéthylène séparé pour un doublage de mur.
 - Gaines : passer électricité et plomberie DERRIÈRE la laine, ressortir par un petit trou étanché dans le placo.
 - Protection gel (mur sur extérieur) : ne jamais laisser la plomberie contre la maçonnerie froide ; glisser de l'isolant derrière les tuyaux.
-- Type de plaque selon la pièce : pièce sèche → BA13 standard ; pièce humide → hydrofuge ; derrière poêle bois/granulés → placo FEU (plaque rose) ; réduction du bruit → phonique.
+- Type de plaque selon la pièce : pièce sèche → BA13 standard ; pièce humide → hydrofuge ; derrière poêle bois/granulés → placo FEU ; réduction du bruit → phonique ; haute résistance (écoles, gymnases) → placo dur.
+- CODE COULEUR PLACO (à reconnaître sur les photos) : blanc = BA13 standard ; vert = hydrofuge (eau) ; rose = feu (résistance incendie) ; bleu = phonique (isolation acoustique) ; jaune = dur (haute résistance mécanique, écoles, lieux publics). Les zones blanches sur du placo vert sont de l'enduit de joint poncé (pas une sous-couche ni une passe de vérification).
 - Coupes : droites = règle + cutter (inciser, casser, couper le carton arrière) ; formes = scie à guichet ; trous (spots, prises) = scie trépan. Toujours RABOTER les bords (rabot Surform) avant pose.
 - Ordre de fermeture : rails → isolant → réseaux → vissage des plaques → enduisage.
 
 CYCLE BANDES À JOINT PLACO NEUF (référence unique — vaut murs ET plafonds)
 1. MAP sur les têtes de vis ISOLÉES uniquement (au milieu des plaques, hors axe des bandes), une noisette ras.
 2. Pas de MAP sur les vis dans l'axe des bandes (elles seront noyées par l'enduit de la bande).
-3. Coller la bande de joint entre les plaques (noyée dans une 1ère passe d'enduit).
-4. 2e passe d'enduit sur bandes + têtes de vis (laisser sécher).
-5. 3e passe plus fine (laisser sécher) ; 4e passe ou ratissage si nécessaire.
-- Doublage mur + plafond : prévoir aussi les bandes au raccord mur/plafond. Toujours peindre plafond + murs dans la même phase.
+3. Coller la bande de joint entre les plaques (noyée dans une 1ère passe d'enduit — J1).
+4. 2e passe d'enduit sur bandes + têtes de vis, séchage (J2).
+5. 3e passe plus fine, séchage (J3) ; 4e passe de finition si nécessaire, séchage (J4).
+6. Ponçage grain 150-180 (J5). Résultat : zones blanches (enduit poncé) alternent avec le placo apparent (vert si hydrofuge).
+- Doublage mur + plafond : prévoir aussi les bandes au raccord mur/plafond. RÈGLE ABSOLUE : dès qu'une bande est faite au raccord mur/plafond ou que des murs sont peints neufs, le plafond DOIT être repeint dans la même phase — une peinture neuve sur les murs à côté d'un plafond ancien fait paraître ce dernier jauni ou sale.
 
 PEINTURE — procédure selon le support
-A) PLACO NEUF : suivre le cycle bandes ci-dessus (pas d'enduit pleine surface), puis sous-couche acrylique générale, puis 2 couches de finition.
-B) MURS ANCIENS (maçonnerie, plâtre dégradé) :
+A) PLACO NEUF : suivre le cycle bandes ci-dessus (pas d'enduit pleine surface), puis sous-couche ACRYLIQUE générale, puis 2 couches de finition.
+B) MURS ANCIENS (maçonnerie, plâtre dégradé, fond friable) :
    1. Préparation mécanique : ponçage + dépoussiérage, contrôle de l'état.
-   2. Impression : sous-couche GLYCÉRO pour fixer/bloquer le fond ancien.
+   2. Impression : sous-couche GLYCÉRO uniquement sur supports anciens et/ou friables pour fixer/bloquer le fond avant enduit. JAMAIS de glycéro sur placo neuf ou support sain.
    3. Enduit garnissant pleine surface en passes croisées + retouches, ponçage après séchage.
    4. Sous-couche acrylique générale.
    5. Contrôle final : poncer les retouches d'enduit puis recouvrir LOCALEMENT de sous-couche (évite les spectres).
 C) FINITION : 2 couches (blanc ou couleur selon choix client).
-- Ordre dans une pièce : PLAFOND d'abord, puis rampants, puis murs verticaux.
+- Ordre dans une pièce : PLAFOND d'abord (toujours), puis rampants, puis murs verticaux. RÈGLE PROFESSIONNELLE : on repeint toujours le plafond quand on refait les murs, et vice versa. Une couleur de plafond ancienne à côté de murs neufs est systématiquement visible. Idem si seul le plafond est refait : peindre aussi les murs pour une cohérence visuelle parfaite.
 - Ponçage des enduits : grain 150 minimum, 180 idéal. Jamais 120 (raye) ni 80 (sauf décape grossier / gros plâtre de rebouchage). 120 toléré en transition rebouchage→finition. Les petits surplus (bandes armées d'angle) se grattent au couteau plutôt que se poncent.
 - Avant peinture : ponçage général + aspiration + dépoussiérage au balai serpillière humide.
+- OUTILLAGE PEINTURE (toujours les 3 ensemble) : manchon 180 mm (grand rouleau, pour les surfaces) + manchon 100 mm (petit rouleau, pour les zones étroites et retours) + pinceau à rechampir (pour les angles, bords, plinthes et encadrements). Ces trois outils sont utilisés ensemble sur chaque chantier peinture.
 
 SOL — ancien plancher bois
 - Éviter le ragréage (risque de fissure, complexe pour un non-pro). Vérifier l'aplomb à la règle, fixer les lames qui bougent, choisir une bonne sous-couche.
