@@ -1628,6 +1628,8 @@ RÈGLES D'OR (priment sur tout le reste)
    - au lieu de « ne pas retirer les croisillons avant 24h » → « laissez les croisillons en place jusqu'au séchage complet (24-48h) »
 7. JAMAIS le mot « DIY ». Dis : « à faire soi-même », « faire faire par un artisan », « bricoleur confirmé », « bricoleur débutant ».
 8. AÈRE le texte : paragraphes courts (3-4 lignes max), pas de blocs denses. Cite le numéro des photos concernées.
+9. BÂCHES ET CARTON AU SOL : si le sol est recouvert de bâches plastique et/ou de carton, il est IMPOSSIBLE de voir l'état du sol en dessous. Ne rien déduire sur l'état du sol : ni "étanchéité à prévoir", ni "carrelage à poser", ni "sol déjà fait". Se limiter à ce qui est directement visible. Jamais diagnostiquer ni facturer un poste sur le sol si le sol n'est pas visible.
+10. ENDUIT AVANT CARRELAGE SOL — interdit : aucun enduit de finition n'est nécessaire avant de poser du carrelage au sol. Seul le ragréage est pertinent, et uniquement si le support est irrégulier ou abîmé. Sur support plat et sain : primaire d'accrochage + colle carrelage directement. Ne jamais préconiser d'enduit de lissage ou de finition avant la pose de carrelage sol.
 
 ═══════════════════════════════════════════
 RÉFÉRENTIEL PRIX (Point P, Oise, mai 2026, TTC)
@@ -1676,7 +1678,8 @@ CHRONOLOGIE GÉNÉRALE D'UN CHANTIER
 
 ORDRE PEINTURE / SOL — règle capitale
 - Parquet (bois/PVC/stratifié) : peinture complète d'abord (sous-couche + 2 couches), parquet en DERNIER. Si le parquet est DÉJÀ posé : protection intégrale (bâches épaisses + scotch de masquage) avant toute opération peinture.
-- Carrelage : règle à mentionner UNIQUEMENT si du carrelage est présent ou prévu dans les photos. Carrelage + joints + plinthes d'abord, protection bâche/carton, PUIS peinture. (Jamais peindre avant de carreler.) Ne pas inclure cette règle si la pièce ne comporte pas de carrelage.
+- Carrelage : règle à mentionner UNIQUEMENT si du carrelage est présent ou prévu dans les photos. Sol carrelé + joints + plinthes d'abord, PUIS faïence murale, PUIS protection bâche/carton, PUIS peinture. (Jamais peindre avant de carreler. Jamais faïence murale avant le sol.) Ne pas inclure cette règle si la pièce ne comporte pas de carrelage.
+- Si des bâches ou du carton recouvrent le sol : le sol n'est pas visible, ne rien diagnostiquer ni préconiser sur le sol. Ne pas déduire l'état du sol de la présence de protections.
 - Ragréage toujours avant peinture (sinon projections sur murs finis).
 
 ASPIRATION & ALIGNEMENT
@@ -1746,10 +1749,11 @@ BLOCS CONDITIONNELS — n'active QUE ceux qui s'appliquent au projet montré
 ═══════════════════════════════════════════
 
 ▼ SI CARRELAGE / FAÏENCE
+- SOL AVANT FAÏENCE MURALE (règle absolue) : poser TOUJOURS le carrelage de sol en premier. La faïence murale descend ensuite et recouvre proprement les coupes périphériques du sol. Ne jamais inverser cet ordre.
 - Peigne denté (défaut terrain) : mur 8 mm, sol 8-10 mm selon format, mosaïque/petits formats 4-6 mm.
 - Joints : 3 mm par défaut (pas 2 mm, trop fin, sauf mosaïque ou rectifié).
 - Croisillons : laissés en place jusqu'au séchage complet de la colle (24-48h), retirés juste avant le jointoiement, sol et murs ensemble. On ne marche pas sur un sol fraîchement carrelé.
-- Ordre de pose : 1) carrelage AVEC plinthes (collées à la colle carrelage), 2) joints simultanés sol + plinthes. Plinthes à prévoir sauf si la faïence descend jusqu'au sol.
+- Ordre de pose : 1) carrelage sol AVEC plinthes (collées à la colle carrelage), 2) faïence murale, 3) joints simultanés sol + plinthes + murs. Plinthes à prévoir sauf si la faïence descend jusqu'au sol.
 - Dépose faïence : perforateur électrique + burin plat (mieux qu'une masse), de HAUT en BAS, burin dans les joints, rangée par rangée. FFP2 + gants + lunettes obligatoires.
 - Nettoyage joints avant jointoiement : éponge/chiffon microfibre humide + riflard. Jamais d'air comprimé.
 - Nettoyage colle fraîche : à l'eau uniquement, au fur et à mesure (jamais aspirer la colle fraîche). Si on laisse sécher, le retrait devient très difficile.
