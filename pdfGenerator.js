@@ -624,40 +624,62 @@ function renderContent(doc, text) {
 // ============================================================
 // FOOTER avec palette de couleurs (style Canva)
 // ============================================================
-function drawCanvaFooter(doc, pageNumber, totalPages) {
+function drawCanvaFooter(doc, pageNumber, totalPages, branding) {
   const footerY = LAYOUT.pageHeight - 44;
 
-  // Filet or fin sur toute la largeur, signature luxe
   doc.moveTo(LAYOUT.margin, footerY)
      .lineTo(LAYOUT.margin + LAYOUT.contentWidth, footerY)
      .lineWidth(0.4).strokeColor(COLORS.gold).stroke();
 
-  // Logotype textuel à gauche : marine, lettres espacées
+  const agenceLabel = (branding && branding.agence_nom) ? emojiToText(branding.agence_nom).toUpperCase() : 'RÉNOEXPERT';
+  const carteT = branding && branding.agence_carte_t ? emojiToText('Carte T : ' + branding.agence_carte_t) : '';
+
+  // Nom agence (ou RénoExpert) à gauche
   doc.fillColor(COLORS.navy).fontSize(8).font('Helvetica-Bold')
-     .text('RÉNOEXPERT', LAYOUT.margin, footerY + 10, {
-       width: 120,
-       characterSpacing: 2.5,
+     .text(agenceLabel, LAYOUT.margin, footerY + 8, {
+       width: 200,
+       characterSpacing: 1.5,
        lineBreak: false
      });
 
-  // Tagline centrale
-  doc.fillColor(COLORS.textMuted).fontSize(7.5).font('Helvetica-Oblique')
-     .text('Diagnostic immobilier par intelligence artificielle   ·   renoexpert.fr',
-       LAYOUT.margin, footerY + 11, {
+  // Carte T au centre si disponible
+  if (carteT) {
+    doc.fillColor(COLORS.textMuted).fontSize(7).font('Helvetica')
+       .text(carteT, LAYOUT.margin, footerY + 9, {
          width: LAYOUT.contentWidth,
          align: 'center',
-         characterSpacing: 0.5
+         lineBreak: false
        });
+  }
 
   // Pagination à droite
   if (pageNumber && totalPages) {
     doc.fillColor(COLORS.navy).fontSize(8).font('Helvetica-Bold')
-       .text(`${pageNumber} / ${totalPages}`, LAYOUT.margin, footerY + 11, {
+       .text(`${pageNumber} / ${totalPages}`, LAYOUT.margin, footerY + 8, {
          width: LAYOUT.contentWidth,
          align: 'right',
          characterSpacing: 1,
          lineBreak: false
        });
+  }
+
+  // Mention discrète RénoExpert si branding agence actif
+  if (branding && branding.agence_nom) {
+    doc.fillColor(COLORS.textMuted).fontSize(6).font('Helvetica')
+       .text('Document genere avec RenoExpert · renoexpert.fr',
+         LAYOUT.margin, footerY + 21, {
+           width: LAYOUT.contentWidth,
+           align: 'center',
+           characterSpacing: 0.3
+         });
+  } else {
+    doc.fillColor(COLORS.textMuted).fontSize(7.5).font('Helvetica-Oblique')
+       .text('Diagnostic immobilier par intelligence artificielle   ·   renoexpert.fr',
+         LAYOUT.margin, footerY + 9, {
+           width: LAYOUT.contentWidth,
+           align: 'center',
+           characterSpacing: 0.5
+         });
   }
 }
 
@@ -665,59 +687,53 @@ function drawCanvaFooter(doc, pageNumber, totalPages) {
 // PAGE 1 : EN-TÊTE PRINCIPAL STYLE CANVA
 // ============================================================
 function drawCanvaHeader(doc, options) {
-  const { titleMain, titleSub } = options;
-  const centerX = LAYOUT.pageWidth / 2;
+  const { titleMain, titleSub, branding } = options;
+  const hasAgencyBranding = branding && branding.agence_nom;
+  const logoBuffer = branding && branding.logo_buffer;
 
-  // Bandeau supérieur marine très fin (signature)
+  // Bandeau supérieur marine (signature)
   doc.rect(0, 0, LAYOUT.pageWidth, 14).fill(COLORS.navy);
-
-  // Filet or sous le bandeau
   doc.moveTo(0, 14).lineTo(LAYOUT.pageWidth, 14)
      .lineWidth(0.8).strokeColor(COLORS.gold).stroke();
 
-  // --- LOGO (si disponible) ou fallback libellé doré ---
-  // Le logo horizontal a un ratio ~3.75:1 (800x213). On le centre horizontalement,
-  // largeur ~55% de la page, sous le bandeau supérieur avec un peu d'air.
-  let titleY = 60; // valeur par défaut (sans logo, comme l'ancien rendu)
+  let titleY = 60;
 
-  if (LOGO_PATH) {
+  if (hasAgencyBranding) {
+    // --- MARQUE BLANCHE : logo agence ou nom agence en grand ---
+    if (logoBuffer) {
+      try {
+        const logoWidth = 180;
+        const logoX = (LAYOUT.pageWidth - logoWidth) / 2;
+        const logoY = 22;
+        doc.image(logoBuffer, logoX, logoY, { width: logoWidth, fit: [logoWidth, 60] });
+        titleY = logoY + 66;
+      } catch (e) {
+        console.error('[pdfGenerator] Erreur logo agence, fallback texte :', e.message);
+        _drawAgencyNameFallback(doc, branding.agence_nom);
+        titleY = 72;
+      }
+    } else {
+      _drawAgencyNameFallback(doc, branding.agence_nom);
+      titleY = 72;
+    }
+  } else if (LOGO_PATH) {
+    // Logo RénoExpert
     try {
-      const logoWidth = 200; // largeur d'affichage en points PDF
-      const logoHeight = logoWidth * (213 / 800); // ~53.25 pt
+      const logoWidth = 200;
+      const logoHeight = logoWidth * (213 / 800);
       const logoX = (LAYOUT.pageWidth - logoWidth) / 2;
-      const logoY = 22; // sous le bandeau marine, avec marge
-
+      const logoY = 22;
       doc.image(LOGO_PATH, logoX, logoY, { width: logoWidth });
-
-      // Le titre principal vient juste sous le logo
       titleY = logoY + logoHeight + 14;
     } catch (e) {
-      console.error('[pdfGenerator] Erreur lecture logo, fallback libellé :', e.message);
-      // Fallback : libellé doré lettré (rendu historique)
-      doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
-         .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
-           LAYOUT.margin, 35, {
-             width: LAYOUT.contentWidth,
-             align: 'center',
-             characterSpacing: 1.2,
-             lineBreak: false
-           });
+      _drawRenoexpertFallback(doc);
       titleY = 60;
     }
   } else {
-    // Pas de logo : on conserve l'ancien libellé doré lettré
-    doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
-       .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
-         LAYOUT.margin, 35, {
-           width: LAYOUT.contentWidth,
-           align: 'center',
-           characterSpacing: 1.2,
-           lineBreak: false
-         });
+    _drawRenoexpertFallback(doc);
     titleY = 60;
   }
 
-  // Grand titre marine en haut, classique haut de gamme
   doc.fillColor(COLORS.navy).fontSize(36).font('Helvetica-Bold')
      .text(titleMain, LAYOUT.margin, titleY, {
        width: LAYOUT.contentWidth,
@@ -726,19 +742,41 @@ function drawCanvaHeader(doc, options) {
        lineGap: -6
      });
 
-  // Filet doré sous le titre
   doc.moveDown(0.4);
   const lineY = doc.y;
   drawGoldRule(doc, { y: lineY, width: 60 });
   doc.y = lineY + 12;
 
-  // Sous-titre en italique discret
   doc.fillColor(COLORS.textSecondary).fontSize(11).font('Helvetica-Oblique')
      .text(titleSub, LAYOUT.margin, doc.y, {
        width: LAYOUT.contentWidth,
        align: 'center'
      });
   doc.moveDown(0.8);
+}
+
+function _drawAgencyNameFallback(doc, agenceNom) {
+  const name = emojiToText(agenceNom || '').toUpperCase();
+  doc.fillColor(COLORS.navy).fontSize(14).font('Helvetica-Bold')
+     .text(name, LAYOUT.margin, 26, {
+       width: LAYOUT.contentWidth,
+       align: 'center',
+       characterSpacing: 2.5,
+       lineBreak: false
+     });
+  doc.moveTo(LAYOUT.margin + 80, 46).lineTo(LAYOUT.pageWidth - LAYOUT.margin - 80, 46)
+     .lineWidth(0.5).strokeColor(COLORS.gold).stroke();
+}
+
+function _drawRenoexpertFallback(doc) {
+  doc.fillColor(COLORS.gold).fontSize(7).font('Helvetica-Bold')
+     .text('R É N O E X P E R T   ·   D O S S I E R   P R O F E S S I O N N E L',
+       LAYOUT.margin, 35, {
+         width: LAYOUT.contentWidth,
+         align: 'center',
+         characterSpacing: 1.2,
+         lineBreak: false
+       });
 }
 
 // ============================================================
@@ -888,60 +926,54 @@ function generateReparationPDF(data, res) {
 }
 
 function generateAgentPDF(data, res) {
-  const { analysis, agence_nom, agent_nom, location, surface } = data;
+  const { analysis, agence_nom, agent_nom, location, surface, branding } = data;
+  const b = branding || {};
+  const nomAgence = b.agence_nom || agence_nom || 'Votre agence';
+  const nomAgent  = b.agence_agent_nom || agent_nom || 'Votre agent';
   const cleaned = simplifyTerms(analysis);
-  
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Fiche Commerciale - RénoExpert' }});
+
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: `Avis de Valeur - ${emojiToText(nomAgence)}` }});
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="fiche-agent.pdf"');
+  res.setHeader('Content-Disposition', `attachment; filename="avis-valeur-${emojiToText(nomAgence).toLowerCase().replace(/\s+/g,'-') || 'agent'}.pdf"`);
   doc.pipe(res);
-  
+
   fillBackground(doc);
-  
+
   drawCanvaHeader(doc, {
-    titleMain: 'Fiche Commerciale',
-    titleSub: `Présentation par ${agence_nom || 'votre agence'}`
+    titleMain: 'Avis de Valeur',
+    titleSub: `Présenté par ${emojiToText(nomAgence)}`,
+    branding: b
   });
-  
-  drawCanvaHeaderTable(doc, [
-    {
-      title: 'Agence',
-      headerColor: COLORS.mintGreen,
-      content: agence_nom || 'Non précisée'
-    },
-    {
-      title: 'Agent',
-      headerColor: COLORS.creamYellow,
-      content: agent_nom || 'Non précisé'
-    },
-    {
-      title: 'Bien situé',
-      headerColor: COLORS.coralRed,
-      content: location || 'Non précisé'
-    },
-    {
-      title: 'Surface',
-      headerColor: COLORS.powderPink,
-      content: surface ? `${surface} m²` : 'N/A'
-    }
-  ]);
-  
+
+  const cols = [
+    { title: 'Agence', headerColor: COLORS.mintGreen, content: emojiToText(nomAgence) }
+  ];
+  if (b.agence_telephone) cols.push({ title: 'Téléphone', headerColor: COLORS.skyBlue, content: emojiToText(b.agence_telephone) });
+  cols.push({ title: 'Bien situé', headerColor: COLORS.coralRed, content: emojiToText(location || 'Non précisé') });
+  cols.push({ title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' });
+
+  drawCanvaHeaderTable(doc, cols);
+
   renderContent(doc, cleaned);
-  
+
   doc.moveDown(0.5);
+  const contactLines = [`${emojiToText(nomAgent)} — ${emojiToText(nomAgence)}`];
+  if (b.agence_adresse) contactLines.push(emojiToText(b.agence_adresse));
+  if (b.agence_telephone) contactLines.push(emojiToText(b.agence_telephone));
+  if (b.agence_carte_t) contactLines.push(`Carte professionnelle T : ${emojiToText(b.agence_carte_t)}`);
   drawColoredCard(doc, {
-    title: 'Contact pour ce bien',
-    content: `${agent_nom || 'Votre agent'} — ${agence_nom || 'Agence'}\nPour planifier une visite ou obtenir plus d'informations.`,
+    title: 'Contact',
+    content: contactLines.join('\n'),
     bgColor: COLORS.mintGreenBg,
     textColor: COLORS.mintGreenDark
   });
-  
+
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc, i + 1, range.count);
+    drawCanvaFooter(doc, i + 1, range.count, b);
   }
-  
+
   doc.end();
 }
 
@@ -1061,35 +1093,43 @@ function stripAgentOnlySections(analysis) {
 }
 
 function generateAgentAcheteurPDF(data, res) {
-  const { analysis, agence_nom, agent_nom, location, surface } = data;
+  const { analysis, agence_nom, agent_nom, location, surface, branding } = data;
+  const b = branding || {};
+  const nomAgence = b.agence_nom || agence_nom || 'Votre agence';
+  const nomAgent  = b.agence_agent_nom || agent_nom || 'Votre agent';
   const filtered = stripAgentOnlySections(analysis);
   const cleaned = simplifyTerms(filtered);
 
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Rapport Bien - RénoExpert' } });
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: `Rapport Bien - ${emojiToText(nomAgence)}` } });
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="rapport-bien.pdf"');
+  res.setHeader('Content-Disposition', `attachment; filename="rapport-bien-${emojiToText(nomAgence).toLowerCase().replace(/\s+/g,'-') || 'acheteur'}.pdf"`);
   doc.pipe(res);
 
   fillBackground(doc);
 
   drawCanvaHeader(doc, {
     titleMain: 'Rapport Bien',
-    titleSub: `Présentation par ${agence_nom || 'votre agence'}`
+    titleSub: `Présenté par ${emojiToText(nomAgence)}`,
+    branding: b
   });
 
-  drawCanvaHeaderTable(doc, [
-    { title: 'Agence', headerColor: COLORS.mintGreen, content: agence_nom || 'Non précisée' },
-    { title: 'Agent', headerColor: COLORS.creamYellow, content: agent_nom || 'Non précisé' },
-    { title: 'Bien situé', headerColor: COLORS.coralRed, content: location || 'Non précisé' },
-    { title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' }
-  ]);
+  const cols = [
+    { title: 'Agence', headerColor: COLORS.mintGreen, content: emojiToText(nomAgence) }
+  ];
+  if (b.agence_telephone) cols.push({ title: 'Téléphone', headerColor: COLORS.skyBlue, content: emojiToText(b.agence_telephone) });
+  cols.push({ title: 'Bien situé', headerColor: COLORS.coralRed, content: emojiToText(location || 'Non précisé') });
+  cols.push({ title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' });
+  drawCanvaHeaderTable(doc, cols);
 
   renderContent(doc, cleaned);
 
   doc.moveDown(0.5);
+  const contactLines = [`${emojiToText(nomAgent)} — ${emojiToText(nomAgence)}`, 'Pour planifier une visite ou obtenir plus d\'informations.'];
+  if (b.agence_telephone) contactLines.push(emojiToText(b.agence_telephone));
+  if (b.agence_carte_t) contactLines.push(`Carte professionnelle T : ${emojiToText(b.agence_carte_t)}`);
   drawColoredCard(doc, {
-    title: 'Contact pour ce bien',
-    content: `${agent_nom || 'Votre agent'} — ${agence_nom || 'Agence'}\nPour planifier une visite ou obtenir plus d'informations.`,
+    title: 'Contact',
+    content: contactLines.join('\n'),
     bgColor: COLORS.mintGreenBg,
     textColor: COLORS.mintGreenDark
   });
@@ -1097,42 +1137,51 @@ function generateAgentAcheteurPDF(data, res) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc, i + 1, range.count);
+    drawCanvaFooter(doc, i + 1, range.count, b);
   }
 
   doc.end();
 }
 
 function generateAgentVendeurPDF(data, res) {
-  const { analysis, agence_nom, agent_nom, location, surface } = data;
+  const { analysis, agence_nom, agent_nom, location, surface, branding } = data;
+  const b = branding || {};
+  const nomAgence = b.agence_nom || agence_nom || 'Votre agence';
+  const nomAgent  = b.agence_agent_nom || agent_nom || 'Votre agent';
   const filtered = stripAgentOnlySections(analysis);
   const cleaned = simplifyTerms(filtered);
 
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Document Propriétaire - RénoExpert' } });
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: `Avis de Valeur - ${emojiToText(nomAgence)}` } });
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="rapport-vendeur.pdf"');
+  res.setHeader('Content-Disposition', `attachment; filename="avis-valeur-vendeur-${emojiToText(nomAgence).toLowerCase().replace(/\s+/g,'-') || 'vendeur'}.pdf"`);
   doc.pipe(res);
 
   fillBackground(doc);
 
   drawCanvaHeader(doc, {
-    titleMain: 'Document Propriétaire',
-    titleSub: `Évaluation par ${agence_nom || 'votre agence'}`
+    titleMain: 'Avis de Valeur',
+    titleSub: `Réalisé par ${emojiToText(nomAgence)}`,
+    branding: b
   });
 
-  drawCanvaHeaderTable(doc, [
-    { title: 'Agence', headerColor: COLORS.mintGreen, content: agence_nom || 'Non précisée' },
-    { title: 'Agent', headerColor: COLORS.creamYellow, content: agent_nom || 'Non précisé' },
-    { title: 'Bien situé', headerColor: COLORS.coralRed, content: location || 'Non précisé' },
-    { title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' }
-  ]);
+  const cols = [
+    { title: 'Agence', headerColor: COLORS.mintGreen, content: emojiToText(nomAgence) }
+  ];
+  if (b.agence_telephone) cols.push({ title: 'Téléphone', headerColor: COLORS.skyBlue, content: emojiToText(b.agence_telephone) });
+  cols.push({ title: 'Bien situé', headerColor: COLORS.coralRed, content: emojiToText(location || 'Non précisé') });
+  cols.push({ title: 'Surface', headerColor: COLORS.powderPink, content: surface ? `${surface} m²` : 'N/A' });
+  drawCanvaHeaderTable(doc, cols);
 
   renderContent(doc, cleaned);
 
   doc.moveDown(0.5);
+  const synthLines = [`Document remis par ${emojiToText(nomAgent)} — ${emojiToText(nomAgence)}`];
+  if (b.agence_adresse) synthLines.push(emojiToText(b.agence_adresse));
+  if (b.agence_carte_t) synthLines.push(`Carte professionnelle T : ${emojiToText(b.agence_carte_t)}`);
+  synthLines.push('Ce rapport évalue votre bien et les travaux recommandés avant mise en vente.');
   drawColoredCard(doc, {
     title: 'Votre bien — synthèse',
-    content: `Document remis par ${agent_nom || 'votre agent'} — ${agence_nom || 'Agence'}\nCe rapport synthétise l'évaluation de votre bien et les travaux recommandés avant mise en vente.`,
+    content: synthLines.join('\n'),
     bgColor: COLORS.creamYellowBg,
     textColor: COLORS.creamYellowDark
   });
@@ -1140,7 +1189,122 @@ function generateAgentVendeurPDF(data, res) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(i);
-    drawCanvaFooter(doc, i + 1, range.count);
+    drawCanvaFooter(doc, i + 1, range.count, b);
+  }
+
+  doc.end();
+}
+
+// ============================================================
+// AVIS DE VALEUR — Bloc données de marché DVF
+// ============================================================
+function _drawDvfMarketBlock(doc, dvf, surface, prixM2Agent) {
+  ensureSpace(doc, 36);
+  const titleY = doc.y;
+  doc.rect(LAYOUT.margin, titleY + 3, 2, 16).fill(COLORS.gold);
+  doc.fillColor(COLORS.navy).fontSize(12).font('Helvetica-Bold')
+     .text('DONNEES DE MARCHE', LAYOUT.margin + 10, titleY, {
+       width: LAYOUT.contentWidth - 10,
+       characterSpacing: 1.2
+     });
+  doc.moveDown(0.4);
+
+  if (!dvf) {
+    drawColoredCard(doc, {
+      title: 'Données de marché',
+      content: 'Aucune vente enregistrée dans la base DVF pour cette commune. L\'estimation repose sur l\'analyse des photos et le prix de référence saisi par l\'agent.'
+    });
+    return;
+  }
+
+  const fmtN = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const confLabel = { eleve: 'Confiance elevee', moyen: 'Confiance moyenne', faible: 'Confiance faible' };
+  const headers = ['Type de bien', 'Prix median', 'Ventes retenues', 'Fiabilite'];
+  const rows = [];
+
+  if (dvf.maison && dvf.maison.prix_m2_median) {
+    const m = dvf.maison;
+    const brtNote = (m.nb_ventes_brutes && m.nb_ventes_brutes > m.nb_ventes)
+      ? ` (${m.nb_ventes_brutes} brutes)` : '';
+    rows.push(['Maison', `${fmtN(m.prix_m2_median)} EUR/m2`, `${m.nb_ventes}${brtNote}`, confLabel[m.confiance] || m.confiance]);
+  }
+  if (dvf.appartement && dvf.appartement.prix_m2_median) {
+    const a = dvf.appartement;
+    const brtNote = (a.nb_ventes_brutes && a.nb_ventes_brutes > a.nb_ventes)
+      ? ` (${a.nb_ventes_brutes} brutes)` : '';
+    rows.push(['Appartement', `${fmtN(a.prix_m2_median)} EUR/m2`, `${a.nb_ventes}${brtNote}`, confLabel[a.confiance] || a.confiance]);
+  }
+
+  if (rows.length > 0) drawDataTable(doc, headers, rows);
+
+  if (prixM2Agent && parseFloat(prixM2Agent) > 0) {
+    const cible = parseFloat(prixM2Agent);
+    const ref = (dvf.maison && dvf.maison.prix_m2_median) || (dvf.appartement && dvf.appartement.prix_m2_median);
+    if (ref) {
+      const ecart = ((cible - ref) / ref * 100).toFixed(1);
+      const pos = parseFloat(ecart) < -10 ? 'sous la mediane du marche'
+        : parseFloat(ecart) > 10 ? 'au-dessus de la mediane du marche'
+        : 'dans la mediane du marche';
+      drawColoredCard(doc, {
+        title: 'Positionnement',
+        content: `Prix agent : ${fmtN(cible)} EUR/m2   |   Mediane marche : ${fmtN(ref)} EUR/m2\nEcart : ${parseFloat(ecart) > 0 ? '+' : ''}${ecart}%   Positionnement : ${pos}`
+      });
+    }
+  }
+
+  doc.fillColor(COLORS.textMuted).fontSize(8).font('Helvetica-Oblique')
+     .text('Source : DVF (Demandes de Valeurs Foncieres) — data.gouv.fr — outliers +/-2 sigma exclus',
+       LAYOUT.margin, doc.y, { width: LAYOUT.contentWidth });
+  doc.moveDown(0.8);
+}
+
+// ============================================================
+// AVIS DE VALEUR — Template dédié (distinct des rapports standards)
+// ============================================================
+function generateAvisValeurPDF(data, res) {
+  const { analysis, location, surface, prix_m2_agent, branding, dvf } = data;
+  const b = branding || {};
+  const nomAgence = b.agence_nom || 'RenoExpert';
+  const nomAgent  = b.agence_agent_nom || '';
+  const cleaned   = simplifyTerms(analysis);
+
+  const safeName = emojiToText(nomAgence).toLowerCase().replace(/\s+/g, '-') || 'bien';
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: `Avis de Valeur — ${emojiToText(nomAgence)}` } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="avis-valeur-${safeName}.pdf"`);
+  doc.pipe(res);
+
+  fillBackground(doc);
+
+  drawCanvaHeader(doc, {
+    titleMain: 'Avis de Valeur',
+    titleSub: `Presente par ${emojiToText(nomAgence)}`,
+    branding: b
+  });
+
+  const infoCols = [{ title: 'Agence', content: emojiToText(nomAgence) }];
+  if (b.agence_telephone) infoCols.push({ title: 'Telephone', content: emojiToText(b.agence_telephone) });
+  infoCols.push({ title: 'Bien', content: emojiToText(location || 'Non precise') });
+  infoCols.push({ title: 'Surface', content: surface ? `${surface} m2` : 'N/A' });
+  drawCanvaHeaderTable(doc, infoCols);
+
+  _drawDvfMarketBlock(doc, dvf, surface, prix_m2_agent);
+
+  renderContent(doc, cleaned);
+
+  doc.moveDown(0.5);
+  const contactLines = [];
+  if (nomAgent) contactLines.push(`${emojiToText(nomAgent)} — ${emojiToText(nomAgence)}`);
+  else contactLines.push(emojiToText(nomAgence));
+  if (b.agence_adresse) contactLines.push(emojiToText(b.agence_adresse));
+  if (b.agence_telephone) contactLines.push(emojiToText(b.agence_telephone));
+  if (b.agence_carte_t) contactLines.push(`Carte professionnelle T : ${emojiToText(b.agence_carte_t)}`);
+  drawColoredCard(doc, { title: 'Contact', content: contactLines.join('\n') });
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(i);
+    drawCanvaFooter(doc, i + 1, range.count, b);
   }
 
   doc.end();
@@ -1153,5 +1317,6 @@ module.exports = {
   generateAgentAcheteurPDF,
   generateAgentVendeurPDF,
   generateMarchandPDF,
-  generateExpressPDF
+  generateExpressPDF,
+  generateAvisValeurPDF
 };
