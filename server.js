@@ -770,7 +770,8 @@ async function loadPrixCaps(codeInsee) {
 // Pipeline complet : fetch → pré-filtrage → outliers ±2σ → caps zone → médiane + confiance
 async function getDVFData(codePostal, nomCommune) {
   if (!codePostal) return null;
-  const cacheKey = String(codePostal);
+  const norm = (s) => s ? s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '') : '';
+  const cacheKey = nomCommune ? `${codePostal}:${norm(nomCommune)}` : String(codePostal);
   const cached = dvfCache.get(cacheKey);
   if (cached && Date.now() < cached.expires) return cached.data;
 
