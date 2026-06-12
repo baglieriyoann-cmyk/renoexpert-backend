@@ -213,6 +213,14 @@ async function initDB() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS siret_raison_sociale VARCHAR(255)`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS siret_verifie_at TIMESTAMP`);
 
+    // Colonnes branding agence (écran Mon agence)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS agence_nom VARCHAR(255)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS agence_telephone VARCHAR(50)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS agence_adresse VARCHAR(500)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS agence_carte_t VARCHAR(50)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS agence_agent_nom VARCHAR(255)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS agence_logo TEXT`);
+
     // Table feedbacks (mise à jour avec user_id INT pour lier aux comptes)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS feedbacks (
@@ -435,6 +443,78 @@ async function initDB() {
     // Migration : colonne dpe_classe sur la table biens
     await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS dpe_classe VARCHAR(1)`);
 
+    // Table cache mutations DVF/DV3F par commune (schéma enrichi compatible futur import DV3F)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dvf_mutations (
+        id SERIAL PRIMARY KEY,
+        code_insee VARCHAR(10) NOT NULL,
+        date_mutation DATE,
+        nature_mutation VARCHAR(50),
+        valeur_fonciere NUMERIC(12,2),
+        surface_reelle_bati NUMERIC(8,2),
+        type_local VARCHAR(50),
+        nb_pieces INTEGER,
+        latitude NUMERIC(10,7),
+        longitude NUMERIC(10,7),
+        source VARCHAR(20) DEFAULT 'dvf',
+        qualite_indicateur SMALLINT DEFAULT 0,
+        annee_import INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dvf_insee ON dvf_mutations(code_insee)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dvf_date ON dvf_mutations(code_insee, date_mutation DESC)`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dvf_dedup ON dvf_mutations(code_insee, valeur_fonciere, surface_reelle_bati, date_mutation, type_local) WHERE date_mutation IS NOT NULL`);
+
+    // Caps de prix par zone (plancher/plafond pour neutraliser anomalies rurales)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prix_caps_commune (
+        id SERIAL PRIMARY KEY,
+        code_insee VARCHAR(10) NOT NULL,
+        type_bien VARCHAR(20) NOT NULL,
+        plancher INTEGER,
+        plafond INTEGER,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(code_insee, type_bien)
+      )
+    `);
+
+    // Coefficients d'ajustement prix selon classe DPE (paramétrables en base)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dpe_coefficients (
+        classe CHAR(1) PRIMARY KEY,
+        ajustement_pct NUMERIC(5,2) NOT NULL,
+        description TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    // Valeurs par défaut (insérées seulement si la table est vide)
+    await pool.query(`
+      INSERT INTO dpe_coefficients(classe, ajustement_pct, description) VALUES
+        ('A',  6.0, 'Performance excellente — surcote premium'),
+        ('B',  3.0, 'Très bonne performance'),
+        ('C',  0.0, 'Neutre — norme actuelle'),
+        ('D',  0.0, 'Neutre'),
+        ('E', -5.0, 'Logement énergivore — légère décote'),
+        ('F',-12.0, 'Passoire énergétique — interdiction location 2028'),
+        ('G',-20.0, 'Passoire urgente — interdit location dès maintenant')
+      ON CONFLICT (classe) DO NOTHING
+    `);
+
+    // Historique des avis de valeur générés par les agents
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS avis_de_valeur (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        location TEXT,
+        surface NUMERIC(10,2),
+        prix_m2_agent NUMERIC(10,2),
+        analysis TEXT NOT NULL,
+        dvf_snapshot JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     console.log('✅ Base de données initialisée');
   } catch (err) {
     console.error('❌ Erreur init DB:', err.message);
@@ -529,11 +609,8 @@ function generateToken() {
 }
 
 // ============================================================
-// DONNÉES DE PRIX IMMOBILIER RÉELLES (DVF - data.gouv.fr)
+// DONNÉES DE PRIX IMMOBILIER RÉELLES (DVF / DV3F)
 // ============================================================
-// Interroge la base officielle des ventes immobilières (Demandes de Valeurs
-// Foncières) pour calculer un prix au m² médian réel sur une commune.
-// Robuste : en cas d'échec de l'API, renvoie null (l'IA basculera sur l'estimation).
 const dvfCache = new Map();
 const DVF_CACHE_MS = 24 * 60 * 60 * 1000; // 24h
 
@@ -542,6 +619,41 @@ function median(arr) {
   const sorted = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? Math.round(sorted[mid]) : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+function moyenne(arr) {
+  return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0;
+}
+
+function ecartType(arr, moy) {
+  if (arr.length < 2) return 0;
+  const m = moy !== undefined ? moy : moyenne(arr);
+  return Math.sqrt(arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length);
+}
+
+// Retire les valeurs au-delà de ±2 écarts-types (spec 1.2)
+function filtrerOutliers(arr) {
+  if (arr.length < 5) return arr;
+  const m = moyenne(arr);
+  const sd = ecartType(arr, m);
+  if (sd === 0) return arr;
+  return arr.filter(x => x >= m - 2 * sd && x <= m + 2 * sd);
+}
+
+// Calcule un indice de confiance sur les comparables retenus (spec 1.3)
+function calculerConfiance(arr) {
+  const n = arr.length;
+  if (n === 0) return { niveau: 'faible', n: 0, cv: null };
+  const m = moyenne(arr);
+  const sd = ecartType(arr, m);
+  const cv = m > 0 ? Math.round((sd / m) * 100) : 100; // coefficient de variation en %
+
+  let points = 0;
+  if (n >= 20) points += 3; else if (n >= 10) points += 2; else if (n >= 5) points += 1;
+  if (cv < 25) points += 2; else if (cv < 40) points += 1;
+
+  const niveau = points >= 4 ? 'eleve' : points >= 2 ? 'moyen' : 'faible';
+  return { niveau, n, cv };
 }
 
 // Récupère le code INSEE d'une commune à partir du code postal (API officielle géo)
@@ -564,15 +676,11 @@ async function getCodeInsee(codePostal, nomCommune) {
   }
 }
 
-// Interroge DVF et calcule le prix médian au m² pour MAISONS et APPARTEMENTS
-// Essaie plusieurs sources DVF dans l'ordre jusqu'à ce qu'une réponde.
-// Retourne un tableau de mutations normalisées {valeur, surface, type} ou null.
+// Retourne un tableau de mutations normalisées {valeur, surface, type, date} ou null.
+// Source principale : CSV géo-DVF officiel (files.data.gouv.fr). Secours : API cquest.
 async function fetchMutationsDVF(codePostal, codeInsee) {
-  // --- SOURCE PRINCIPALE : fichiers CSV officiels géo-DVF (files.data.gouv.fr) ---
-  // Ultra-stable, hébergé sur l'infra officielle. Organisé par code INSEE de commune.
-  // On lit les 2 années les plus récentes disponibles.
   if (codeInsee) {
-    const dept = codeInsee.substring(0, 2); // ex: "60382" -> "60" (gère aussi 2A/2B)
+    const dept = codeInsee.length >= 5 ? codeInsee.substring(0, 2) : codeInsee;
     const annees = ['2024', '2023'];
     let toutes = [];
     for (const annee of annees) {
@@ -588,17 +696,22 @@ async function fetchMutationsDVF(codePostal, codeInsee) {
           valeur: entetes.indexOf('valeur_fonciere'),
           surface: entetes.indexOf('surface_reelle_bati'),
           type: entetes.indexOf('type_local'),
-          nature: entetes.indexOf('nature_mutation')
+          nature: entetes.indexOf('nature_mutation'),
+          date: entetes.indexOf('date_mutation'),
+          pieces: entetes.indexOf('nombre_pieces_principales')
         };
+        if (idx.valeur < 0 || idx.surface < 0) continue;
         for (let i = 1; i < lignes.length; i++) {
           const cols = lignes[i].split(',');
-          if (cols.length < entetes.length) continue;
+          if (cols.length < 4) continue;
           const nature = idx.nature >= 0 ? cols[idx.nature] : 'Vente';
-          if (nature && nature !== 'Vente') continue; // garder seulement les ventes
+          if (nature && nature !== 'Vente') continue;
           toutes.push({
             valeur: parseFloat(cols[idx.valeur]),
             surface: parseFloat(cols[idx.surface]),
-            type: cols[idx.type]
+            type: cols[idx.type] || '',
+            date: idx.date >= 0 ? cols[idx.date] : null,
+            pieces: idx.pieces >= 0 ? parseInt(cols[idx.pieces]) || null : null
           });
         }
       } catch (err) {
@@ -611,7 +724,6 @@ async function fetchMutationsDVF(codePostal, codeInsee) {
     }
   }
 
-  // --- SECOURS : micro-API cquest (filtre direct par code postal) ---
   try {
     const url = `https://api.cquest.org/dvf?code_postal=${codePostal}`;
     const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
@@ -623,7 +735,9 @@ async function fetchMutationsDVF(codePostal, codeInsee) {
         return {
           valeur: parseFloat(p.valeur_fonciere),
           surface: parseFloat(p.surface_relle_bati || p.surface_reelle_bati),
-          type: p.type_local
+          type: p.type_local || '',
+          date: p.date_mutation || null,
+          pieces: null
         };
       });
       if (mutations.length > 0) {
@@ -639,6 +753,21 @@ async function fetchMutationsDVF(codePostal, codeInsee) {
   return null;
 }
 
+// Charge les caps de prix depuis la DB pour une commune (plancher/plafond par type)
+async function loadPrixCaps(codeInsee) {
+  if (!codeInsee) return {};
+  try {
+    const r = await pool.query(
+      'SELECT type_bien, plancher, plafond FROM prix_caps_commune WHERE code_insee = $1',
+      [codeInsee]
+    );
+    const caps = {};
+    for (const row of r.rows) caps[row.type_bien] = { plancher: row.plancher, plafond: row.plafond };
+    return caps;
+  } catch { return {}; }
+}
+
+// Pipeline complet : fetch → pré-filtrage → outliers ±2σ → caps zone → médiane + confiance
 async function getDVFData(codePostal, nomCommune) {
   if (!codePostal) return null;
   const cacheKey = String(codePostal);
@@ -646,34 +775,64 @@ async function getDVFData(codePostal, nomCommune) {
   if (cached && Date.now() < cached.expires) return cached.data;
 
   try {
-    // On récupère le code INSEE en parallèle (utile pour la source 2 et le nom de commune)
     const insee = await getCodeInsee(codePostal, nomCommune);
-    const mutations = await fetchMutationsDVF(codePostal, insee ? insee.code : null);
+    const [mutations, caps] = await Promise.all([
+      fetchMutationsDVF(codePostal, insee ? insee.code : null),
+      loadPrixCaps(insee ? insee.code : null)
+    ]);
     if (!mutations || mutations.length === 0) return null;
 
-    const prixM2ParType = { Maison: [], Appartement: [] };
+    const now = Date.now();
+    const prixParType = { Maison: [], Appartement: [] };
+
     mutations.forEach(m => {
-      const valeur = m.valeur;
-      const surface = m.surface;
-      const type = m.type;
-      if (!valeur || !surface || surface < 9) return;
-      if (valeur < 10000 || valeur > 3000000) return;
-      const prixM2 = valeur / surface;
-      if (prixM2 < 200 || prixM2 > 20000) return;
-      if (type === 'Maison') prixM2ParType.Maison.push(prixM2);
-      else if (type === 'Appartement') prixM2ParType.Appartement.push(prixM2);
+      if (!m.valeur || !m.surface || m.surface < 9 || m.surface > 2000) return;
+      if (m.valeur < 10000 || m.valeur > 5000000) return;
+      const prixM2 = m.valeur / m.surface;
+      if (prixM2 < 200 || prixM2 > 25000) return;
+      const type = m.type === 'Maison' ? 'Maison' : m.type === 'Appartement' ? 'Appartement' : null;
+      if (!type) return;
+      // Calcul ancienneté (mois)
+      let ageMois = null;
+      if (m.date) {
+        const d = new Date(m.date);
+        if (!isNaN(d)) ageMois = Math.round((now - d.getTime()) / (1000 * 60 * 60 * 24 * 30));
+      }
+      prixParType[type].push({ prix: prixM2, age: ageMois });
     });
 
-    const maisonMed = median(prixM2ParType.Maison);
-    const appartMed = median(prixM2ParType.Appartement);
-    if (!maisonMed && !appartMed) return null; // pas de données exploitables
+    const calculerStats = (items, typeCap) => {
+      if (!items.length) return null;
+      let prix = items.map(i => i.prix);
+      // 1. Filtrage outliers ±2σ
+      prix = filtrerOutliers(prix);
+      // 2. Application des caps zone si définis
+      const cap = caps[typeCap];
+      if (cap) {
+        if (cap.plancher) prix = prix.filter(p => p >= cap.plancher);
+        if (cap.plafond)  prix = prix.filter(p => p <= cap.plafond);
+      }
+      if (!prix.length) return null;
+      const confiance = calculerConfiance(prix);
+      return {
+        prix_m2_median: median(prix),
+        nb_ventes: prix.length,
+        nb_ventes_brutes: items.length,
+        confiance: confiance.niveau,
+        cv: confiance.cv
+      };
+    };
+
+    const maison = calculerStats(prixParType.Maison, 'Maison');
+    const appartement = calculerStats(prixParType.Appartement, 'Appartement');
+    if (!maison && !appartement) return null;
 
     const result = {
       commune: insee ? insee.nom : ('CP ' + codePostal),
       code_insee: insee ? insee.code : null,
-      maison: { prix_m2_median: maisonMed, nb_ventes: prixM2ParType.Maison.length },
-      appartement: { prix_m2_median: appartMed, nb_ventes: prixM2ParType.Appartement.length },
-      source: 'DVF (ventes reelles enregistrees, data.gouv.fr)'
+      maison: maison || { prix_m2_median: null, nb_ventes: 0, confiance: 'faible', cv: null },
+      appartement: appartement || { prix_m2_median: null, nb_ventes: 0, confiance: 'faible', cv: null },
+      source: 'DVF (ventes réelles, data.gouv.fr — outliers filtrés ±2σ)'
     };
     dvfCache.set(cacheKey, { data: result, expires: Date.now() + DVF_CACHE_MS });
     return result;
@@ -683,25 +842,31 @@ async function getDVFData(codePostal, nomCommune) {
   }
 }
 
-// Construit un bloc texte à injecter dans le prompt avec les vraies données prix
+// Construit le bloc texte injecté dans le prompt IA avec données prix + indice de confiance
 function buildDVFContext(dvf, prixAgentM2) {
   let bloc = '\n=== DONNEES DE PRIX REELLES (a utiliser EN PRIORITE pour l\'estimation) ===\n';
   if (prixAgentM2 && parseFloat(prixAgentM2) > 0) {
-    bloc += `Prix au m2 de reference SAISI PAR L'AGENT (il connait son secteur) : ${prixAgentM2} €/m2. C'est la donnee la PLUS fiable, utilise-la comme pivot principal.\n`;
+    bloc += `Prix au m2 de reference SAISI PAR L'AGENT : ${prixAgentM2} €/m2. Utilise-le comme pivot principal.\n`;
   }
   if (dvf) {
-    bloc += `\nVentes reelles enregistrees (base DVF officielle) pour ${dvf.commune} :\n`;
-    if (dvf.maison.prix_m2_median) {
-      bloc += `- MAISONS : prix median ${dvf.maison.prix_m2_median} €/m2 (sur ${dvf.maison.nb_ventes} ventes reelles)\n`;
+    const niveauFr = { eleve: 'ELEVEE', moyen: 'MOYENNE', faible: 'FAIBLE' };
+    bloc += `\nVentes reelles filtrees (outliers ±2σ exclus) pour ${dvf.commune} :\n`;
+    if (dvf.maison && dvf.maison.prix_m2_median) {
+      const c = dvf.maison;
+      bloc += `- MAISONS : prix median ${c.prix_m2_median} €/m2 (${c.nb_ventes} ventes retenues sur ${c.nb_ventes_brutes || c.nb_ventes} — confiance ${niveauFr[c.confiance] || c.confiance})\n`;
     }
-    if (dvf.appartement.prix_m2_median) {
-      bloc += `- APPARTEMENTS : prix median ${dvf.appartement.prix_m2_median} €/m2 (sur ${dvf.appartement.nb_ventes} ventes reelles)\n`;
+    if (dvf.appartement && dvf.appartement.prix_m2_median) {
+      const c = dvf.appartement;
+      bloc += `- APPARTEMENTS : prix median ${c.prix_m2_median} €/m2 (${c.nb_ventes} ventes retenues sur ${c.nb_ventes_brutes || c.nb_ventes} — confiance ${niveauFr[c.confiance] || c.confiance})\n`;
     }
-    bloc += `Source : ${dvf.source}.\n`;
-    bloc += `\nNOTE IMPORTANTE : ces prix DVF sont des MEDIANES toutes ventes confondues (biens en bon etat ET a renover melanges). Pour un bien EN BON ETAT ou RENOVE, le prix se situe dans le HAUT de la fourchette, voire au-dessus de la mediane. Pour un bien a renover, plutot dans le bas. N'utilise PAS la mediane brute comme prix de vente d'un bien renove : ajuste a la hausse selon l'etat reel constate sur les photos.\n`;
+    const maisConf = dvf.maison && dvf.maison.confiance;
+    if (maisConf === 'faible') {
+      bloc += `ATTENTION : peu de ventes comparables dans ce secteur. La mediane est moins fiable — l'agent doit valider le prix avec sa connaissance locale et les annonces recentes.\n`;
+    }
+    bloc += `\nNOTE : ces prix sont des MEDIANES toutes ventes confondues (bons etats ET a renover). Pour un bien EN BON ETAT, le prix se situe dans le HAUT de la fourchette. Pour un bien a renover, dans le bas. Ajuste selon l'etat reel constate sur les photos.\n`;
   } else if (!prixAgentM2) {
-    bloc += 'Aucune donnee DVF disponible pour cette commune et aucun prix saisi par l\'agent.\n';
-    bloc += 'IMPORTANT : sois PRUDENT et plutot genereux dans l\'estimation. Ne sous-estime JAMAIS un bien. En cas de doute, donne une fourchette large et precise que l\'agent doit valider le prix avec sa connaissance du secteur et les annonces comparables locales.\n';
+    bloc += 'Aucune donnee de prix disponible pour cette commune et aucun prix saisi.\n';
+    bloc += 'IMPORTANT : sois genereux dans l\'estimation, ne sous-estime jamais. Donne une fourchette large avec note "a valider par l\'agent avec les comparables locaux".\n';
   }
   bloc += '=== FIN DONNEES PRIX ===\n';
   return bloc;
@@ -789,6 +954,7 @@ function getCreditCost(req) {
   if (req.path.includes('/api/refine/agent')) return 1;
   if (req.path.includes('/api/pdf/agent-acheteur')) return 1;
   if (req.path.includes('/api/pdf/agent-vendeur')) return 1;
+  if (req.path.includes('/api/pdf/avis-valeur')) return 2;
   return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
 }
 
@@ -2309,6 +2475,7 @@ app.get('/api/prix-secteur', requireAuth, async (req, res) => {
     res.json({
       success: true,
       commune: dvf.commune,
+      code_insee: dvf.code_insee,
       maison: dvf.maison,
       appartement: dvf.appartement,
       source: dvf.source
@@ -2317,6 +2484,156 @@ app.get('/api/prix-secteur', requireAuth, async (req, res) => {
     console.error('Erreur prix-secteur:', error);
     res.json({ success: false, error: error.message });
   }
+});
+
+// ============================================================
+// ROUTES BRANDING AGENCE (Mon agence)
+// ============================================================
+
+app.get('/api/agent/branding', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT agence_nom, agence_telephone, agence_adresse, agence_carte_t, agence_agent_nom, agence_logo FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const row = result.rows[0] || {};
+    res.json({ success: true, branding: {
+      agence_nom: row.agence_nom || '',
+      agence_telephone: row.agence_telephone || '',
+      agence_adresse: row.agence_adresse || '',
+      agence_carte_t: row.agence_carte_t || '',
+      agence_agent_nom: row.agence_agent_nom || '',
+      agence_logo: row.agence_logo || null
+    }});
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/agent/branding', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const { agence_nom, agence_telephone, agence_adresse, agence_carte_t, agence_agent_nom, agence_logo } = req.body;
+    await pool.query(
+      `UPDATE users SET agence_nom=$1, agence_telephone=$2, agence_adresse=$3, agence_carte_t=$4, agence_agent_nom=$5, agence_logo=$6 WHERE id=$7`,
+      [agence_nom || null, agence_telephone || null, agence_adresse || null, agence_carte_t || null, agence_agent_nom || null, agence_logo || null, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// Charge les coefficients DPE depuis la DB (avec cache mémoire 1h)
+let dpeCoeffCache = null;
+let dpeCoeffCacheAt = 0;
+async function getDpeCoefficients() {
+  if (dpeCoeffCache && Date.now() - dpeCoeffCacheAt < 3600000) return dpeCoeffCache;
+  try {
+    const r = await pool.query('SELECT classe, ajustement_pct FROM dpe_coefficients');
+    const map = {};
+    for (const row of r.rows) map[row.classe] = parseFloat(row.ajustement_pct);
+    dpeCoeffCache = map;
+    dpeCoeffCacheAt = Date.now();
+    return map;
+  } catch { return {}; }
+}
+
+// Construit un bloc texte DPE à injecter dans le prompt IA
+async function buildDpeContext(dpeData) {
+  if (!dpeData || !dpeData.classe_energie) return '';
+  const classe = dpeData.classe_energie.toUpperCase();
+  const coeffs = await getDpeCoefficients();
+  const pct = coeffs[classe];
+  const labelClasse = { A: 'Excellent (A)', B: 'Très bien (B)', C: 'Bien (C)', D: 'Moyen (D)', E: 'Énergivore (E)', F: 'Passoire (F)', G: 'Passoire urgente (G)' };
+  let bloc = `\n=== DPE (open data ADEME) ===\n`;
+  bloc += `Classe énergie : ${classe} — ${labelClasse[classe] || classe}\n`;
+  if (dpeData.ges) bloc += `Étiquette GES : ${dpeData.ges}\n`;
+  if (dpeData.annee_construction) bloc += `Année de construction : ${dpeData.annee_construction}\n`;
+  if (dpeData.surface) bloc += `Surface DPE : ${dpeData.surface} m²\n`;
+  if (dpeData.date_validite) bloc += `Date de validité : ${dpeData.date_validite}\n`;
+  if (pct !== undefined) {
+    if (pct > 0) {
+      bloc += `\nIMPACT DPE SUR LE PRIX : classe ${classe} → SURCOTE estimée de +${pct}% par rapport à la médiane DVF. Ce bien est plus économe en énergie que la moyenne des ventes comparables — valorise cet avantage dans l'estimation.\n`;
+    } else if (pct < 0) {
+      bloc += `\nIMPACT DPE SUR LE PRIX : classe ${classe} → DÉCOTE estimée de ${pct}% par rapport à la médiane DVF. `;
+      if (classe === 'F' || classe === 'G') {
+        bloc += `Ce bien est une passoire énergétique soumise aux restrictions de location (loi Climat). Intègre obligatoirement une estimation du coût de rénovation énergétique nécessaire pour atteindre la classe D minimum et mentionne l'impact sur la valeur.\n`;
+      } else {
+        bloc += `Ajuste l'estimation à la baisse selon l'état énergétique constaté.\n`;
+      }
+    } else {
+      bloc += `\nIMPACT DPE SUR LE PRIX : classe ${classe} → neutre (dans la norme du secteur).\n`;
+    }
+  }
+  bloc += `=== FIN DPE ===\n`;
+  return bloc;
+}
+
+// DPE fallback ADEME open data — requêté après sélection adresse BAN
+app.get('/api/agent/dpe-ademe', requireAuth, async (req, res) => {
+  try {
+    const { adresse } = req.query;
+    if (!adresse) return res.json({ success: false });
+    // Deux datasets : logements existants + neufs
+    const fields = 'classe_consommation_energie,etiquette_ges,annee_construction_dpe,surface_habitable_logement,date_fin_validite_dpe,numero_dpe';
+    const urls = [
+      `https://data.ademe.fr/data-fair/api/v1/datasets/dpe-v2-logements-existants/lines?q=${encodeURIComponent(adresse)}&select=${fields}&size=3&sort=-date_fin_validite_dpe`,
+      `https://data.ademe.fr/data-fair/api/v1/datasets/dpe-v2-logements-neufs/lines?q=${encodeURIComponent(adresse)}&select=${fields}&size=2&sort=-date_fin_validite_dpe`
+    ];
+    let item = null;
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) continue;
+        const data = await r.json();
+        if (data.results && data.results.length > 0) {
+          // Préférer le DPE encore valide (date_fin_validite_dpe dans le futur)
+          const now = new Date();
+          item = data.results.find(x => x.date_fin_validite_dpe && new Date(x.date_fin_validite_dpe) > now)
+              || data.results[0];
+          break;
+        }
+      } catch { continue; }
+    }
+    if (!item) return res.json({ success: false });
+    const coeffs = await getDpeCoefficients();
+    const classe = (item.classe_consommation_energie || '').toUpperCase();
+    res.json({
+      success: true,
+      classe_energie: classe || null,
+      ges: item.etiquette_ges || null,
+      annee_construction: item.annee_construction_dpe || null,
+      surface: item.surface_habitable_logement || null,
+      date_validite: item.date_fin_validite_dpe || null,
+      numero_dpe: item.numero_dpe || null,
+      ajustement_pct: coeffs[classe] !== undefined ? coeffs[classe] : null
+    });
+  } catch {
+    res.json({ success: false });
+  }
+});
+
+// Admin : lire / modifier les coefficients DPE
+app.get('/api/admin/dpe-coefficients', async (req, res) => {
+  if (req.query.token !== ADMIN_TOKEN) return res.status(403).json({ error: 'Accès refusé' });
+  try {
+    const r = await pool.query('SELECT * FROM dpe_coefficients ORDER BY classe');
+    res.json({ success: true, coefficients: r.rows });
+  } catch (err) { res.json({ success: false, error: err.message }); }
+});
+
+app.post('/api/admin/dpe-coefficients', express.json(), async (req, res) => {
+  if (req.body.token !== ADMIN_TOKEN) return res.status(403).json({ error: 'Accès refusé' });
+  const { classe, ajustement_pct, description } = req.body;
+  if (!classe) return res.json({ success: false, error: 'classe requis' });
+  try {
+    await pool.query(
+      `UPDATE dpe_coefficients SET ajustement_pct=$1, description=$2, updated_at=NOW() WHERE classe=$3`,
+      [ajustement_pct, description || null, classe.toUpperCase()]
+    );
+    dpeCoeffCache = null; // invalide le cache
+    res.json({ success: true });
+  } catch (err) { res.json({ success: false, error: err.message }); }
 });
 
 // ============================================================
@@ -2540,15 +2857,17 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
 
 app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes, dpe_ademe_data } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     const assainissementFiles = (req.files && req.files.assainissement) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
+
     const dpeNote = dpeFiles.length > 0
       ? `\nUn dossier de diagnostics est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — surface habitable, classe énergie, GES, assainissement — pas d'estimation.\n`
-      : `\nAucun dossier de diagnostics fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le dossier peut être ajouté ultérieurement et la fiche régénérée.\n`;
+      : `\nAucun dossier de diagnostics fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le dossier peut être ajouté ultérieurement.\n`;
+
     const assainNote = assainissementFiles.length > 0
       ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires avec leurs coûts dans la fiche.\n`
       : '';
@@ -2559,20 +2878,35 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
       ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
       : '';
     const potentielBlock = potentiel && potentiel.trim()
-      ? `\nPOTENTIEL DU BIEN signalé par l'agent (TRÈS IMPORTANT pour l'estimation) : ${potentiel.trim()}\nCe potentiel (division, agrandissement, combles aménageables, terrain constructible…) crée une valeur qui dépasse le simple prix au m² en l'état. Un bien brut avec un fort potentiel vaut BIEN PLUS que sa valeur actuelle : explique ce potentiel dans la fiche et chiffre la plus-value réalisable. Ne te limite PAS au prix au m² du secteur pour un bien à fort potentiel.\n`
+      ? `\nPOTENTIEL DU BIEN signalé par l'agent (TRÈS IMPORTANT pour l'estimation) : ${potentiel.trim()}\nCe potentiel crée une valeur au-delà du simple prix au m² — explique-le dans la fiche et chiffre la plus-value réalisable.\n`
       : '';
-    // Récupérer les vraies données de prix DVF pour la commune
+
+    // DPE ADEME fallback : utilisé si aucun fichier DPE n'est fourni
+    let dpeAdemeBloc = '';
+    let dpeAdemeData = null;
+    if (dpeFiles.length === 0 && dpe_ademe_data) {
+      try {
+        dpeAdemeData = typeof dpe_ademe_data === 'string' ? JSON.parse(dpe_ademe_data) : dpe_ademe_data;
+        dpeAdemeBloc = await buildDpeContext(dpeAdemeData);
+      } catch { /* données malformées, on ignore */ }
+    }
+
     const cp = extraireCodePostal(location);
     const nomCommune = extraireNomCommune(location);
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
 
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
-    res.json({ success: true, analysis, agence_nom, agent_nom, dpe_fourni: dpeFiles.length > 0, dvf_utilise: !!dvf });
+    res.json({
+      success: true, analysis, agence_nom, agent_nom,
+      dpe_fourni: dpeFiles.length > 0,
+      dpe_ademe: dpeAdemeData ? { classe: dpeAdemeData.classe_energie, ajustement_pct: dpeAdemeData.ajustement_pct } : null,
+      dvf_utilise: !!dvf
+    });
   } catch (error) {
     console.error('Erreur agent:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
@@ -3119,11 +3453,42 @@ app.post('/api/pdf/reparation', generalLimiter, requireAuth, async (req, res) =>
   }
 });
 
+// Helper : récupère le branding agence d'un utilisateur + convertit le logo base64 → Buffer
+async function fetchUserBranding(userId) {
+  try {
+    const r = await pool.query(
+      'SELECT agence_nom, agence_telephone, agence_adresse, agence_carte_t, agence_agent_nom, agence_logo FROM users WHERE id = $1',
+      [userId]
+    );
+    if (!r.rows.length) return {};
+    const row = r.rows[0];
+    const branding = {
+      agence_nom: row.agence_nom || null,
+      agence_telephone: row.agence_telephone || null,
+      agence_adresse: row.agence_adresse || null,
+      agence_carte_t: row.agence_carte_t || null,
+      agence_agent_nom: row.agence_agent_nom || null,
+      logo_buffer: null
+    };
+    if (row.agence_logo) {
+      try {
+        const b64 = row.agence_logo.replace(/^data:[^;]+;base64,/, '');
+        branding.logo_buffer = Buffer.from(b64, 'base64');
+      } catch { /* logo malformé, ignoré */ }
+    }
+    return branding;
+  } catch (err) {
+    console.error('fetchUserBranding échec:', err.message);
+    return {};
+  }
+}
+
 app.post('/api/pdf/agent', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    pdfGen.generateAgentPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
+    const branding = await fetchUserBranding(req.user.id);
+    pdfGen.generateAgentPDF({ analysis, agence_nom, agent_nom, location, surface, branding }, res);
   } catch (error) {
     console.error('Erreur PDF agent:', error);
     res.status(500).json({ error: error.message });
@@ -3135,7 +3500,8 @@ app.post('/api/pdf/agent-acheteur', generalLimiter, requireAuth, checkCredits, a
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
     await deductCredits(req.user.id, req.creditCost || 1);
-    pdfGen.generateAgentAcheteurPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
+    const branding = await fetchUserBranding(req.user.id);
+    pdfGen.generateAgentAcheteurPDF({ analysis, agence_nom, agent_nom, location, surface, branding }, res);
   } catch (error) {
     console.error('Erreur PDF agent-acheteur:', error);
     res.status(500).json({ error: error.message });
@@ -3147,10 +3513,107 @@ app.post('/api/pdf/agent-vendeur', generalLimiter, requireAuth, checkCredits, as
     const { analysis, agence_nom, agent_nom, location, surface } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
     await deductCredits(req.user.id, req.creditCost || 1);
-    pdfGen.generateAgentVendeurPDF({ analysis, agence_nom, agent_nom, location, surface }, res);
+    const branding = await fetchUserBranding(req.user.id);
+    pdfGen.generateAgentVendeurPDF({ analysis, agence_nom, agent_nom, location, surface, branding }, res);
   } catch (error) {
     console.error('Erreur PDF agent-vendeur:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/pdf/avis-valeur', generalLimiter, requireAuth, checkCredits, async (req, res) => {
+  try {
+    const { analysis, location, surface, prix_m2_agent } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    await deductCredits(req.user.id, req.creditCost || 2);
+    const branding = await fetchUserBranding(req.user.id);
+    const cp = extraireCodePostal(location);
+    const commune = extraireNomCommune(location);
+    const dvf = cp ? await getDVFData(cp, commune) : null;
+    // Save to history (non-fatal)
+    pool.query(
+      'INSERT INTO avis_de_valeur (user_id, location, surface, prix_m2_agent, analysis, dvf_snapshot) VALUES ($1,$2,$3,$4,$5,$6)',
+      [req.user.id, location || null, surface ? parseFloat(surface) : null,
+       prix_m2_agent ? parseFloat(prix_m2_agent) : null,
+       analysis, dvf ? JSON.stringify(dvf) : null]
+    ).catch(e => console.error('⚠️ Sauvegarde historique avis:', e.message));
+    pdfGen.generateAvisValeurPDF({ analysis, location, surface, prix_m2_agent, branding, dvf }, res);
+  } catch (err) {
+    console.error('Erreur PDF avis-valeur:', err);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+});
+
+// Re-génère un PDF depuis l'historique (déjà payé — pas de déduction de crédits)
+app.post('/api/pdf/avis-valeur-replay', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const { avis_id } = req.body;
+    if (!avis_id) return res.status(400).json({ error: 'avis_id manquant' });
+    const r = await pool.query(
+      'SELECT * FROM avis_de_valeur WHERE id = $1 AND user_id = $2',
+      [parseInt(avis_id), req.user.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Avis introuvable' });
+    const avis = r.rows[0];
+    const branding = await fetchUserBranding(req.user.id);
+    pdfGen.generateAvisValeurPDF({
+      analysis: avis.analysis,
+      location: avis.location,
+      surface: avis.surface ? String(avis.surface) : null,
+      prix_m2_agent: avis.prix_m2_agent ? String(avis.prix_m2_agent) : null,
+      branding,
+      dvf: avis.dvf_snapshot || null
+    }, res);
+  } catch (err) {
+    console.error('Erreur PDF avis-valeur-replay:', err);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+});
+
+// Liste des avis de valeur de l'utilisateur
+app.get('/api/agent/historique', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT id, location, surface, prix_m2_agent, created_at FROM avis_de_valeur WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+      [req.user.id]
+    );
+    res.json({ success: true, avis: r.rows });
+  } catch (err) {
+    console.error('Erreur GET historique:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Détail d'un avis (pour duplication)
+app.get('/api/agent/historique/:id', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+    const r = await pool.query(
+      'SELECT id, location, surface, prix_m2_agent, analysis, created_at FROM avis_de_valeur WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Avis introuvable' });
+    res.json({ success: true, avis: r.rows[0] });
+  } catch (err) {
+    console.error('Erreur GET historique/:id:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Suppression d'un avis
+app.delete('/api/agent/historique/:id', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+    await pool.query(
+      'DELETE FROM avis_de_valeur WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erreur DELETE historique:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -3597,6 +4060,31 @@ async function sendBackupEmail(backup) {
     return false;
   }
 }
+
+// GET/POST /api/admin/prix-caps — gestion des caps de prix par commune (admin)
+app.get('/api/admin/prix-caps', async (req, res) => {
+  if (req.query.token !== ADMIN_TOKEN) return res.status(403).json({ error: 'Accès refusé' });
+  try {
+    const r = await pool.query('SELECT * FROM prix_caps_commune ORDER BY code_insee, type_bien');
+    res.json({ success: true, caps: r.rows });
+  } catch (err) { res.json({ success: false, error: err.message }); }
+});
+
+app.post('/api/admin/prix-caps', express.json(), async (req, res) => {
+  if (req.body.token !== ADMIN_TOKEN) return res.status(403).json({ error: 'Accès refusé' });
+  const { code_insee, type_bien, plancher, plafond } = req.body;
+  if (!code_insee || !type_bien) return res.json({ success: false, error: 'code_insee et type_bien requis' });
+  try {
+    await pool.query(
+      `INSERT INTO prix_caps_commune(code_insee, type_bien, plancher, plafond, updated_at)
+       VALUES($1,$2,$3,$4,NOW())
+       ON CONFLICT(code_insee, type_bien) DO UPDATE SET plancher=$3, plafond=$4, updated_at=NOW()`,
+      [code_insee, type_bien, plancher || null, plafond || null]
+    );
+    dvfCache.delete(code_insee); // invalide le cache pour cette commune
+    res.json({ success: true });
+  } catch (err) { res.json({ success: false, error: err.message }); }
+});
 
 // Endpoint de téléchargement manuel du backup (protégé par ADMIN_TOKEN)
 app.get('/admin/backup', async (req, res) => {
