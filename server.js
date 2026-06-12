@@ -824,9 +824,16 @@ async function getDVFData(codePostal, nomCommune) {
       };
     };
 
-    const maison = calculerStats(prixParType.Maison, 'Maison');
-    const appartement = calculerStats(prixParType.Appartement, 'Appartement');
+    let maison = calculerStats(prixParType.Maison, 'Maison');
+    let appartement = calculerStats(prixParType.Appartement, 'Appartement');
     if (!maison && !appartement) return null;
+
+    // Sanity check : en zone rurale avec peu de ventes, un appartement atypique peut fausser la médiane
+    if (appartement && appartement.nb_ventes < 5) {
+      if (!maison || appartement.prix_m2_median > maison.prix_m2_median * 2.5) {
+        appartement = null;
+      }
+    }
 
     const result = {
       commune: insee ? insee.nom : ('CP ' + codePostal),
