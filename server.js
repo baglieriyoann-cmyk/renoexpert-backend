@@ -47,8 +47,8 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ============================================================
 // RATE-LIMITING (maison, sans dépendance externe)
@@ -155,9 +155,10 @@ const anthropic = new Anthropic({
 // - BREVO_API_KEY : ta clé API Brevo pour envoyer des emails
 // - NOTIFICATION_EMAIL : email où tu veux recevoir les notifications
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN
+  || require('crypto').randomBytes(32).toString('hex');
 if (!process.env.ADMIN_TOKEN) {
-  console.warn('⚠️  ADMIN_TOKEN non défini — token par défaut "admin123" actif. Définissez ADMIN_TOKEN dans Railway !');
+  console.warn('⚠️  ADMIN_TOKEN non défini — token aléatoire généré (perdu au redémarrage). Définissez ADMIN_TOKEN dans Railway !');
 }
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
@@ -608,6 +609,16 @@ function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ============================================================
 // DONNÉES DE PRIX IMMOBILIER RÉELLES (DVF / DV3F)
 // ============================================================
@@ -991,10 +1002,10 @@ async function deductCredits(userId, cost) {
       [cost, userId]
     );
     if (result.rows.length === 0) {
-      console.error('⚠️ Déduction impossible : crédits insuffisants ou race condition pour user', userId);
+      console.error('[BILLING-MISS] Déduction impossible (crédits insuffisants ou race condition) — userId:', userId, 'cost:', cost);
     }
   } catch (err) {
-    console.error('⚠️ Erreur déduction crédits user', userId, ':', err.message);
+    console.error('[BILLING-MISS] Erreur déduction crédits — userId:', userId, 'cost:', cost, 'err:', err.message);
   }
 }
 
@@ -3763,11 +3774,11 @@ app.get('/admin/feedbacks', async (req, res) => {
                 ${feedbacks.map(f => `
                   <tr>
                     <td>${new Date(f.created_at).toLocaleDateString('fr-FR')} ${new Date(f.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
-                    <td><span class="mode">${f.mode || 'N/A'}</span></td>
-                    <td><span class="note ${f.note === '👍' ? 'positif' : f.note === '👎' ? 'negatif' : 'neutre'}">${f.note}</span></td>
-                    <td style="font-size:12px;color:#5e6987">${f.user_email || f.user_id || 'anonyme'}</td>
-                    <td>${f.location || '-'}</td>
-                    <td style="font-size:12px;color:#5e6987;max-width:300px">${f.probleme || '-'}</td>
+                    <td><span class="mode">${escapeHtml(f.mode || 'N/A')}</span></td>
+                    <td><span class="note ${f.note === '👍' ? 'positif' : f.note === '👎' ? 'negatif' : 'neutre'}">${escapeHtml(f.note)}</span></td>
+                    <td style="font-size:12px;color:#5e6987">${escapeHtml(f.user_email || f.user_id || 'anonyme')}</td>
+                    <td>${escapeHtml(f.location || '-')}</td>
+                    <td style="font-size:12px;color:#5e6987;max-width:300px">${escapeHtml(f.probleme || '-')}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -3838,12 +3849,12 @@ app.get('/admin/users', async (req, res) => {
         ? '<div class="credit-form">'
           + '<select id="action-' + u.id + '"><option value="add">+</option><option value="set">=</option></select>'
           + '<input type="number" id="nb-' + u.id + '" value="3" min="0" max="100">'
-          + '<button class="btn-credit" onclick="recharger(\'' + u.email + '\',\'' + u.id + '\')">&#10003;</button>'
+          + '<button class="btn-credit" onclick="recharger(\'' + escapeHtml(u.email) + '\',\'' + u.id + '\')">&#10003;</button>'
           + '</div>'
         : '<span style="color:#9b8672;font-size:12px">&mdash;</span>';
       return '<tr>'
-        + '<td><strong>' + u.email + '</strong></td>'
-        + '<td>' + (u.nom || '-') + '</td>'
+        + '<td><strong>' + escapeHtml(u.email) + '</strong></td>'
+        + '<td>' + escapeHtml(u.nom || '-') + '</td>'
         + '<td><span class="plan ' + u.plan + '">' + u.plan + '</span></td>'
         + '<td>' + creditsBadge + '</td>'
         + '<td>' + rechargeBtn + '</td>'
