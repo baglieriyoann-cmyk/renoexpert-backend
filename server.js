@@ -4470,6 +4470,9 @@ app.use((err, req, res, next) => {
   if (err && err.code === 'LIMIT_FILE_COUNT') {
     return res.status(413).json({ error: 'Trop de fichiers envoyés en une seule requête.' });
   }
+  if (err && err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ error: `Champ de fichier inattendu : "${err.field}". Réessayez.` });
+  }
   if (err && err.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Requête trop volumineuse. Réduisez la taille des fichiers.' });
   }
