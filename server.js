@@ -169,11 +169,12 @@ const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://renoexpert.fr').repla
 // ============================================================
 // Coût en crédits par type d'analyse
 const CREDIT_COSTS = {
-  express:    1,   // Chiffrage Express (prompt court)
-  reparation: 2,   // Travaux & Réparations (rapport complet sans investissement)
-  complet:    3,   // Rapport Complet agent/visite/marchand
-  annonce:    1,   // Génération d'annonce immobilière
-  default:    1    // fallback
+  express:         1,   // Chiffrage Express (prompt court)
+  reparation:      2,   // Travaux & Réparations (rapport complet sans investissement)
+  complet:         3,   // Rapport Complet agent/visite/marchand
+  annonce:         1,   // Génération d'annonce immobilière
+  analyse_annonce: 3,   // Analyse d'annonce immobilière (acheteur)
+  default:         1    // fallback
 };
 // Crédits offerts à l'inscription (bêta)
 const CREDITS_BETA = 3;
@@ -443,6 +444,18 @@ async function initDB() {
 
     // Migration : colonne dpe_classe sur la table biens
     await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS dpe_classe VARCHAR(1)`);
+
+    // Colonnes manquantes table biens (juin 2026)
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS nb_pieces INTEGER`);
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS nb_chambres INTEGER`);
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS annee_construction INTEGER`);
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS surface_terrain NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS etat_bien VARCHAR(50)`);
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS ville VARCHAR(150)`);
+    await pool.query(`ALTER TABLE biens ADD COLUMN IF NOT EXISTS code_postal VARCHAR(10)`);
+    // Liaison avis_de_valeur → bien (historique par bien)
+    await pool.query(`ALTER TABLE avis_de_valeur ADD COLUMN IF NOT EXISTS bien_id INTEGER`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_avis_bien ON avis_de_valeur(bien_id)`);
 
     // Table cache mutations DVF/DV3F par commune (schéma enrichi compatible futur import DV3F)
     await pool.query(`
@@ -969,6 +982,7 @@ function getCreditCost(req) {
   if (req.path.includes('/api/analyze/express')) return CREDIT_COSTS.express;
   if (req.path.includes('/api/refine/express')) return CREDIT_COSTS.express;
   if (req.path.includes('/api/analyze/reparation')) return CREDIT_COSTS.reparation;
+  if (req.path.includes('/api/analyze/annonce')) return CREDIT_COSTS.analyse_annonce;
   if (req.path.includes('/api/annonce')) return CREDIT_COSTS.annonce;
   if (req.path.includes('/api/refine/agent')) return 1;
   if (req.path.includes('/api/pdf/agent-acheteur')) return 1;
@@ -1378,11 +1392,12 @@ app.get('/api/biens', requireAuth, async (req, res) => {
 
 app.post('/api/biens', requireAuth, async (req, res) => {
   try {
-    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe } = req.body;
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe, nb_pieces, nb_chambres, annee_construction, surface_terrain, etat_bien, ville, code_postal } = req.body;
     const r = await pool.query(
-      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '', dpe_classe || null]
+      `INSERT INTO biens (user_id, adresse, type_bien, surface, nb_niveaux, date_visite, notes, dpe_classe, nb_pieces, nb_chambres, annee_construction, surface_terrain, etat_bien, ville, code_postal)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+      [req.user.id, adresse || '', type_bien || 'maison', surface || null, nb_niveaux || 1, date_visite || null, notes || '', dpe_classe || null,
+       nb_pieces || null, nb_chambres || null, annee_construction || null, surface_terrain || null, etat_bien || null, ville || null, code_postal || null]
     );
     res.json({ success: true, bien: r.rows[0] });
   } catch (err) {
@@ -1404,14 +1419,21 @@ app.get('/api/biens/:id', requireAuth, async (req, res) => {
 
 app.put('/api/biens/:id', requireAuth, async (req, res) => {
   try {
-    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute, dpe_classe } = req.body;
+    const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute, dpe_classe, nb_pieces, nb_chambres, annee_construction, surface_terrain, etat_bien, ville, code_postal } = req.body;
     const r = await pool.query(
       `UPDATE biens SET adresse=$1, type_bien=$2, surface=$3, nb_niveaux=$4, date_visite=$5, notes=$6,
        rapport_complet=COALESCE($7, rapport_complet), fourchette_basse=COALESCE($8, fourchette_basse),
-       fourchette_haute=COALESCE($9, fourchette_haute), dpe_classe=COALESCE($10, dpe_classe), updated_at=NOW()
-       WHERE id=$11 AND user_id=$12 RETURNING *`,
+       fourchette_haute=COALESCE($9, fourchette_haute), dpe_classe=COALESCE($10, dpe_classe),
+       nb_pieces=COALESCE($11, nb_pieces), nb_chambres=COALESCE($12, nb_chambres),
+       annee_construction=COALESCE($13, annee_construction), surface_terrain=COALESCE($14, surface_terrain),
+       etat_bien=COALESCE($15, etat_bien), ville=COALESCE($16, ville), code_postal=COALESCE($17, code_postal),
+       updated_at=NOW()
+       WHERE id=$18 AND user_id=$19 RETURNING *`,
       [adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet || null,
-       fourchette_basse || null, fourchette_haute || null, dpe_classe || null, req.params.id, req.user.id]
+       fourchette_basse || null, fourchette_haute || null, dpe_classe || null,
+       nb_pieces || null, nb_chambres || null, annee_construction || null, surface_terrain || null,
+       etat_bien || null, ville || null, code_postal || null,
+       req.params.id, req.user.id]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'Bien non trouvé' });
     res.json({ success: true, bien: r.rows[0] });
@@ -2384,7 +2406,23 @@ PRODUIS EXACTEMENT CETTE STRUCTURE EN MARKDOWN :
 [Liste à puces des 4-6 arguments de vente les plus convaincants, basés sur l'analyse.]
 
 ## Conseil de diffusion
-[1-2 phrases : sur quelles plateformes diffuser en priorité et pourquoi, selon le type de bien.]`
+[1-2 phrases : sur quelles plateformes diffuser en priorité et pourquoi, selon le type de bien.]`,
+
+  analyse_annonce: `Tu es un expert en évaluation immobilière et en chiffrage de travaux, fort de 10 ans de terrain. Tu analyses une annonce (photos + descriptif) pour aider un acheteur à décider.
+
+**Entrées.** Le descriptif collé par l'utilisateur (contenant en principe le prix demandé, la surface, la localisation et l'année) et les photos du bien.
+
+**1. Extraction.** Repère d'abord dans le descriptif : prix demandé, surface habitable, ville et code postal, année, type de bien, nombre de pièces/chambres. Signale toute donnée manquante.
+
+**2. Cohérence du prix.** Calcule le prix au m² (prix / surface) et situe-le par rapport au marché local du secteur. Indique si le prix paraît bas, cohérent ou élevé, en justifiant (état, prestations, emplacement).
+
+**3. Travaux à prévoir.** À partir des photos, liste poste par poste les travaux probables (toiture, électricité, plomberie, menuiseries, sols, murs, cuisine, salle de bain...), avec une fourchette de coût par poste et un total estimé, selon les ratios de chiffrage habituels.
+
+**4. Points de vigilance.** Signale les risques visibles ou probables (humidité, fissures, vétusté, DPE faible, chauffage à revoir...) et ce qu'il faut vérifier lors de la visite.
+
+**5. Synthèse / aide à la décision.** Le bien vaut-il son prix compte tenu des travaux ? Quel budget global (prix + travaux + frais) ? À quel prix une offre serait-elle cohérente ?
+
+**Cadre.** Tu fournis une aide à la décision, pas une expertise certifiée : reste prudent et factuel. Si le secteur compte peu de transactions, précise que la référence prix/m² est moins fiable et évite les conclusions tranchées. N'invente aucune donnée absente.`
 };
 
 // ============================================================
@@ -3041,6 +3079,23 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
   }
 });
 
+app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.array('photos', 10), async (req, res) => {
+  try {
+    const { descriptif } = req.body;
+    const photos = req.files || [];
+    if (!descriptif || !descriptif.trim()) return res.status(400).json({ error: 'Le descriptif de l\'annonce est requis' });
+    if (photos.length === 0) return res.status(400).json({ error: 'Ajoutez au moins une photo de l\'annonce' });
+    if (photos.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées.' });
+    const context = `DESCRIPTIF DE L'ANNONCE (collé par l'utilisateur) :\n${descriptif.trim()}\n\nExtrait du descriptif les données clés (prix, surface, localisation, année, type, pièces) avant d'analyser.\n`;
+    const analysis = await analyzeWithClaude(PROMPTS.analyse_annonce, photos, context);
+    await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 3);
+    res.json({ success: true, analysis, mode: 'analyse_annonce' });
+  } catch (error) {
+    console.error('Erreur analyse annonce:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
@@ -3542,7 +3597,7 @@ app.post('/api/pdf/agent-vendeur', generalLimiter, requireAuth, checkCredits, as
 
 app.post('/api/pdf/avis-valeur', generalLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
-    const { analysis, location, surface, prix_m2_agent } = req.body;
+    const { analysis, location, surface, prix_m2_agent, bien_id } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
     await deductCredits(req.user.id, req.creditCost || 2);
     const branding = await fetchUserBranding(req.user.id);
@@ -3551,10 +3606,10 @@ app.post('/api/pdf/avis-valeur', generalLimiter, requireAuth, checkCredits, asyn
     const dvf = cp ? await getDVFData(cp, commune) : null;
     // Save to history (non-fatal)
     pool.query(
-      'INSERT INTO avis_de_valeur (user_id, location, surface, prix_m2_agent, analysis, dvf_snapshot) VALUES ($1,$2,$3,$4,$5,$6)',
+      'INSERT INTO avis_de_valeur (user_id, location, surface, prix_m2_agent, analysis, dvf_snapshot, bien_id) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [req.user.id, location || null, surface ? parseFloat(surface) : null,
        prix_m2_agent ? parseFloat(prix_m2_agent) : null,
-       analysis, dvf ? JSON.stringify(dvf) : null]
+       analysis, dvf ? JSON.stringify(dvf) : null, bien_id ? parseInt(bien_id) : null]
     ).catch(e => console.error('⚠️ Sauvegarde historique avis:', e.message));
     pdfGen.generateAvisValeurPDF({ analysis, location, surface, prix_m2_agent, branding, dvf }, res);
   } catch (err) {
@@ -3632,6 +3687,25 @@ app.delete('/api/agent/historique/:id', generalLimiter, requireAuth, async (req,
     res.json({ success: true });
   } catch (err) {
     console.error('Erreur DELETE historique:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Avis de valeur liés à un bien spécifique
+app.get('/api/biens/:id/avis', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const bienId = parseInt(req.params.id);
+    if (isNaN(bienId)) return res.status(400).json({ error: 'ID invalide' });
+    // Vérifie que le bien appartient à l'utilisateur
+    const bienCheck = await pool.query('SELECT id FROM biens WHERE id = $1 AND user_id = $2', [bienId, req.user.id]);
+    if (!bienCheck.rows.length) return res.status(404).json({ error: 'Bien introuvable' });
+    const r = await pool.query(
+      'SELECT id, location, surface, prix_m2_agent, created_at FROM avis_de_valeur WHERE bien_id = $1 AND user_id = $2 ORDER BY created_at DESC',
+      [bienId, req.user.id]
+    );
+    res.json({ success: true, avis: r.rows });
+  } catch (err) {
+    console.error('Erreur GET biens/:id/avis:', err);
     res.status(500).json({ error: err.message });
   }
 });
