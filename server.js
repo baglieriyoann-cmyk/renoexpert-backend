@@ -3079,10 +3079,10 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
   }
 });
 
-app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 10 }]), async (req, res) => {
+app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.any(), async (req, res) => {
   try {
     const { descriptif } = req.body;
-    const photos = (req.files && req.files.photos) || [];
+    const photos = (req.files || []).filter(f => f.fieldname === 'photos');
     if (!descriptif || !descriptif.trim()) return res.status(400).json({ error: 'Le descriptif de l\'annonce est requis' });
     if (photos.length === 0) return res.status(400).json({ error: 'Ajoutez au moins une photo de l\'annonce' });
     if (photos.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées.' });
