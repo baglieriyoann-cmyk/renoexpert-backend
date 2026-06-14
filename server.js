@@ -4473,7 +4473,10 @@ app.use((err, req, res, next) => {
   if (err && err.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Requête trop volumineuse. Réduisez la taille des fichiers.' });
   }
-  next(err);
+  console.error('Erreur non gérée:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err.message || 'Erreur serveur inattendue' });
+  }
 });
 
 // ============================================================
