@@ -3527,6 +3527,17 @@ app.post('/api/pdf/reparation', generalLimiter, requireAuth, async (req, res) =>
   }
 });
 
+app.post('/api/pdf/annonce-analyse', generalLimiter, requireAuth, async (req, res) => {
+  try {
+    const { analysis, descriptif } = req.body;
+    if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
+    pdfGen.generateReparationPDF({ analysis, description: descriptif || "Analyse d'annonce immobilière" }, res);
+  } catch (error) {
+    console.error('Erreur PDF annonce-analyse:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper : récupère le branding agence d'un utilisateur + convertit le logo base64 → Buffer
 async function fetchUserBranding(userId) {
   try {
