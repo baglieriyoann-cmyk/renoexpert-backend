@@ -3531,7 +3531,7 @@ app.post('/api/pdf/annonce-analyse', generalLimiter, requireAuth, async (req, re
   try {
     const { analysis, descriptif } = req.body;
     if (!analysis) return res.status(400).json({ error: 'Analyse manquante' });
-    pdfGen.generateReparationPDF({ analysis, description: descriptif || "Analyse d'annonce immobilière" }, res);
+    pdfGen.generateReparationPDF({ analysis, description: descriptif || "Analyse d'annonce immobilière", type: 'annonce' }, res);
   } catch (error) {
     console.error('Erreur PDF annonce-analyse:', error);
     res.status(500).json({ error: error.message });
