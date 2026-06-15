@@ -917,16 +917,31 @@ function generateReparationPDF(data, res) {
       textColor: COLORS.skyBlueDark
     });
   }
-  
+
+  if (isAnnonce) {
+    doc.addPage();
+    fillBackground(doc);
+    doc.y = LAYOUT.margin;
+  }
+
   renderContent(doc, cleaned);
-  
+
   doc.moveDown(0.5);
-  drawColoredCard(doc, {
-    title: 'Conseil pour réussir',
-    content: 'Imprimez ce guide ou gardez-le ouvert sur votre téléphone pendant les travaux. Ne sautez aucune étape de sécurité. Aspirez bien à chaque étape pour garantir une bonne adhérence. En cas de difficulté, n\'hésitez pas à demander conseil à un professionnel.',
-    bgColor: COLORS.mintGreenBg,
-    textColor: COLORS.mintGreenDark
-  });
+  if (isAnnonce) {
+    drawColoredCard(doc, {
+      title: 'Prochaines etapes',
+      content: 'Avant toute offre : faire inspecter les postes identifies comme urgents (toiture, charpente, installations), demander le diagnostic assainissement si non fourni, verifier le cadastre et l\'etat hypothecaire. Ce rapport ne remplace ni une visite sur site ni l\'avis d\'un professionnel. Les estimations de travaux sont des ordres de grandeur — obtenez des devis d\'artisans pour valider avant de vous engager.',
+      bgColor: COLORS.mintGreenBg,
+      textColor: COLORS.mintGreenDark
+    });
+  } else {
+    drawColoredCard(doc, {
+      title: 'Conseil pour réussir',
+      content: 'Imprimez ce guide ou gardez-le ouvert sur votre téléphone pendant les travaux. Ne sautez aucune étape de sécurité. Aspirez bien à chaque étape pour garantir une bonne adhérence. En cas de difficulté, n\'hésitez pas à demander conseil à un professionnel.',
+      bgColor: COLORS.mintGreenBg,
+      textColor: COLORS.mintGreenDark
+    });
+  }
   
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
