@@ -852,30 +852,33 @@ function generateVisitePDF(data, res) {
 
 function generateReparationPDF(data, res) {
   const { analysis, description } = data;
+  const isAnnonce = data.type === 'annonce';
   const cleaned = simplifyTerms(analysis);
-  
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: 'Guide Réparation - RénoExpert' }});
+
+  const docTitle = isAnnonce ? "Analyse d'annonce - RenoExpert" : 'Guide Réparation - RénoExpert';
+  const fileName = isAnnonce ? 'analyse-annonce.pdf' : 'guide-reparation.pdf';
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: docTitle }});
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="guide-reparation.pdf"');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
   doc.pipe(res);
-  
+
   fillBackground(doc);
-  
+
   drawCanvaHeader(doc, {
-    titleMain: 'Guide Travaux',
-    titleSub: 'Procédure étape par étape pour vos travaux'
+    titleMain: isAnnonce ? "Analyse d'annonce immobiliere" : 'Guide Travaux',
+    titleSub: isAnnonce ? 'Estimation de valeur & chiffrage des travaux' : 'Procédure étape par étape pour vos travaux'
   });
-  
+
   drawCanvaHeaderTable(doc, [
     {
       title: 'Type',
       headerColor: COLORS.mintGreen,
-      content: 'Guide pratique de réparation'
+      content: isAnnonce ? 'Analyse immobiliere' : 'Guide pratique de réparation'
     },
     {
       title: 'Format',
       headerColor: COLORS.creamYellow,
-      content: 'A imprimer ou consulter sur mobile'
+      content: isAnnonce ? 'A consulter ou imprimer' : 'A imprimer ou consulter sur mobile'
     },
     {
       title: 'Date',
@@ -888,14 +891,23 @@ function generateReparationPDF(data, res) {
       content: 'IA RénoExpert'
     }
   ]);
-  
-  // Carte sécurité ROUGE en priorité
-  drawColoredCard(doc, {
-    title: 'A LIRE AVANT DE COMMENCER',
-    content: '✓ Coupez l\'électricité et l\'eau si nécessaire\n✓ Portez vos équipements de protection (gants, lunettes, masque)\n✓ Aspirez le chantier à CHAQUE étape — point essentiel\n✓ Vérifiez régulièrement l\'alignement à la règle ou au laser\n✓ En cas de doute, faites appel à un professionnel',
-    bgColor: COLORS.coralRedBg,
-    textColor: COLORS.coralRedDark
-  });
+
+  if (isAnnonce) {
+    drawColoredCard(doc, {
+      title: 'A propos de ce rapport',
+      content: 'Ce rapport est une aide a la decision, pas une expertise certifiee. Les estimations de travaux sont des ordres de grandeur ; un chiffrage precis necessite des devis d\'artisans apres visite.',
+      bgColor: COLORS.skyBlueBg,
+      textColor: COLORS.skyBlueDark
+    });
+  } else {
+    // Carte sécurité ROUGE — mode réparation uniquement
+    drawColoredCard(doc, {
+      title: 'A LIRE AVANT DE COMMENCER',
+      content: '✓ Coupez l\'électricité et l\'eau si nécessaire\n✓ Portez vos équipements de protection (gants, lunettes, masque)\n✓ Aspirez le chantier à CHAQUE étape — point essentiel\n✓ Vérifiez régulièrement l\'alignement à la règle ou au laser\n✓ En cas de doute, faites appel à un professionnel',
+      bgColor: COLORS.coralRedBg,
+      textColor: COLORS.coralRedDark
+    });
+  }
   
   if (description) {
     drawColoredCard(doc, {
