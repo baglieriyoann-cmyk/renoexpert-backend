@@ -3027,7 +3027,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
 // ROUTES D'AFFINEMENT (sans photos, sur la base d'une analyse précédente)
 // ============================================================
 
-app.post('/api/refine/visite', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/visite', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -3041,7 +3041,7 @@ app.post('/api/refine/visite', aiLimiter, requireAuth, requirePaidForRefine, che
   }
 });
 
-app.post('/api/refine/reparation', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/reparation', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -3096,6 +3096,20 @@ app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.an
   }
 });
 
+app.post('/api/refine/annonce-analyse', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+  try {
+    const { previousAnalysis, instructions, descriptif } = req.body;
+    if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
+    const context = descriptif ? `Descriptif de l'annonce :\n${descriptif}\n\n` : '';
+    const analysis = await refineWithClaude(PROMPTS.analyse_annonce, previousAnalysis, instructions, context);
+    await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 0);
+    res.json({ success: true, analysis });
+  } catch (error) {
+    console.error('Erreur refine annonce-analyse:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
@@ -3110,7 +3124,7 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, async (req, 
   }
 });
 
-app.post('/api/refine/express', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -3124,7 +3138,7 @@ app.post('/api/refine/express', aiLimiter, requireAuth, requirePaidForRefine, ch
   }
 });
 
-app.post('/api/refine/marchand', aiLimiter, requireAuth, requirePaidForRefine, checkAnalysesQuota, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
