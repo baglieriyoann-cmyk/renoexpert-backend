@@ -3192,17 +3192,21 @@ app.post('/api/feedback', generalLimiter, async (req, res) => {
 // ROUTES PROJETS (avec auth + limite quota)
 // ============================================================
 
-async function compressPhotoBase64(base64str) {
+async function compressPhotoBase64(photo) {
+  // Accepte soit une string base64 brute, soit un objet { src, comment }
+  const isObj = photo && typeof photo === 'object';
+  const base64str = isObj ? photo.src : photo;
   try {
-    const raw = base64str.replace(/^data:image\/\w+;base64,/, '');
+    const raw = (base64str || '').replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(raw, 'base64');
     const compressed = await sharp(buffer)
       .resize({ width: 800, withoutEnlargement: true })
       .jpeg({ quality: 70 })
       .toBuffer();
-    return 'data:image/jpeg;base64,' + compressed.toString('base64');
+    const newSrc = 'data:image/jpeg;base64,' + compressed.toString('base64');
+    return isObj ? { ...photo, src: newSrc } : newSrc;
   } catch {
-    return base64str;
+    return photo;
   }
 }
 
