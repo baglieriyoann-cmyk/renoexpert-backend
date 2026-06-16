@@ -3085,7 +3085,7 @@ app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.an
     const photos = (req.files || []).filter(f => f.fieldname === 'photos');
     if (!descriptif || !descriptif.trim()) return res.status(400).json({ error: 'Le descriptif de l\'annonce est requis' });
     if (photos.length === 0) return res.status(400).json({ error: 'Ajoutez au moins une photo de l\'annonce' });
-    if (photos.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées.' });
+    if (photos.length > 15) return res.status(400).json({ error: 'Maximum 15 photos autorisées.' });
     const context = `DESCRIPTIF DE L'ANNONCE (collé par l'utilisateur) :\n${descriptif.trim()}\n\nExtrait du descriptif les données clés (prix, surface, localisation, année, type, pièces) avant d'analyser.\n`;
     const analysis = await analyzeWithClaude(PROMPTS.analyse_annonce, photos, context);
     await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 3);
