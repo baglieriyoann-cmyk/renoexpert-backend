@@ -1857,8 +1857,10 @@ PLÂTRERIE / ISOLATION
 - Laine Isoconfort 35 — 240 mm (rampants, réno idéale) : ~23 €/m² (rouleau 3,12 m² ≈ 72 €)
 
 PEINTURE
-- Pot 10 L : 50 à 150 € (référence 100 € pour une bonne peinture pro lessivable). Jamais sous 50 € le 10 L.
+- Pot 10 L finition : 50 à 150 € (référence 100 € pour une bonne peinture pro lessivable). Jamais sous 50 € le 10 L.
+- Sous-couche acrylique (pot 10 L) : 40 à 80 € (référence 60 €).
 - Conditionnements réels uniquement : 2,5 / 5 / 10 L. Jamais de pot de 1 L.
+- Main d'œuvre artisan peintre (indicatif TTC) : 250 à 400 €/jour selon région. Référence Oise : 300 €/jour. Chambre standard 10 m² : 2 à 3 jours MO = 600 à 900 €. SDB : 1 à 2 jours = 300 à 600 €.
 
 ENDUIT / PRÉPARATION (fournisseur pro conseillé : Lanko / Parexlanko)
 - Enduit en SEAU (jamais « boîte »).
@@ -1935,6 +1937,10 @@ C) FINITION : 2 couches (blanc ou couleur selon choix client).
 - Ponçage des enduits : grain 150 minimum, 180 idéal. Jamais 120 (raye) ni 80 (sauf décape grossier / gros plâtre de rebouchage). 120 toléré en transition rebouchage→finition. Les petits surplus (bandes armées d'angle) se grattent au couteau plutôt que se poncent.
 - Avant peinture : ponçage général + aspiration + dépoussiérage au balai serpillière humide.
 - OUTILLAGE PEINTURE (toujours les 3 ensemble) : manchon 180 mm (grand rouleau, pour les surfaces) + manchon 100 mm (petit rouleau, pour les zones étroites et retours) + pinceau à rechampir (pour les angles, bords, plinthes et encadrements). Ces trois outils sont utilisés ensemble sur chaque chantier peinture.
+- DURÉE RÉALISTE CHANTIER PEINTURE — ne jamais sous-estimer, toujours mentionner dans les étapes :
+  * Murs anciens nécessitant un enduit (support dégradé, friable ou très irrégulier) : 3 à 4 jours. J1 enduit pleine surface + séchage 24h. J2 ponçage + sous-couche + séchage 4h min. J3 1re couche de finition + séchage 4h min. J4 2e couche de finition.
+  * Murs sains ou placo neuf (pas d'enduit, juste préparation légère) : 2 à 3 jours. J1 préparation + sous-couche + séchage 4h. J2 1re couche + séchage 4h. J3 2e couche.
+  * Inclure toujours les temps de séchage entre chaque couche : ne jamais donner une durée inférieure à 3 jours dès que de l'enduit est nécessaire.
 
 SOL — ancien plancher bois
 - Éviter le ragréage (risque de fissure, complexe pour un non-pro). Vérifier l'aplomb à la règle, fixer les lames qui bougent, choisir une bonne sous-couche.
@@ -2732,7 +2738,7 @@ function fileToContent(file, resizedBuffer) {
   };
 }
 
-async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = []) {
+async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = [], signal = null) {
   const content = [];
   if (additionalContext) content.push({ type: 'text', text: additionalContext });
   for (const doc of extraDocs) content.push(fileToContent(doc));
@@ -2767,7 +2773,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
     model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     messages: [{ role: 'user', content }]
-  }, { timeout: 180 * 1000 });
+  }, { timeout: 180 * 1000, ...(signal ? { signal } : {}) });
 
   return message.content[0].text;
 }
@@ -2833,6 +2839,8 @@ ${systemPrompt}`;
 // ROUTE EXPRESS — Chiffrage rapide (1 crédit, ~30 secondes)
 // ============================================================
 app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.array('photos', 5), async (req, res) => {
+  const abort = new AbortController();
+  req.on('close', () => abort.abort());
   try {
     const { context_bien, description } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
@@ -2841,16 +2849,20 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
       context_bien ? `Contexte du bien : ${context_bien}` : '',
       description ? `Description : ${description}` : ''
     ].filter(Boolean).join('\n');
-    const analysis = await analyzeWithClaude(PROMPTS.express, req.files, context);
+    const analysis = await analyzeWithClaude(PROMPTS.express, req.files, context, [], [], abort.signal);
+    if (abort.signal.aborted) return;
     await incrementAnalysesCounter(req.user.id, 'express', req.creditCost || 1);
     res.json({ success: true, analysis, mode: 'express' });
   } catch (error) {
+    if (abort.signal.aborted) return;
     console.error('Erreur express:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
+  const abort = new AbortController();
+  req.on('close', () => abort.abort());
   try {
     const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2882,10 +2894,12 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments);
+    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments, abort.signal);
+    if (abort.signal.aborted) return;
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
+    if (abort.signal.aborted) return;
     console.error('Erreur visite:', error);
 
     // Notification email en cas d'erreur (optionnel)
@@ -2906,22 +2920,28 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
 });
 
 app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, upload.array('photos', 10), async (req, res) => {
+  const abort = new AbortController();
+  req.on('close', () => abort.abort());
   try {
     const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (req.files.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées pour cette analyse.' });
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
+    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments, abort.signal);
+    if (abort.signal.aborted) return;
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
+    if (abort.signal.aborted) return;
     console.error('Erreur reparation:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
+  const abort = new AbortController();
+  req.on('close', () => abort.abort());
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes, dpe_ademe_data } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2965,7 +2985,8 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments);
+    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments, abort.signal);
+    if (abort.signal.aborted) return;
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({
       success: true, analysis, agence_nom, agent_nom,
@@ -2974,6 +2995,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
       dvf_utilise: !!dvf
     });
   } catch (error) {
+    if (abort.signal.aborted) return;
     console.error('Erreur agent:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
       return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
@@ -2983,6 +3005,8 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 });
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
+  const abort = new AbortController();
+  req.on('close', () => abort.abort());
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -3019,11 +3043,13 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments);
+    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments, abort.signal);
+    if (abort.signal.aborted) return;
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
+    if (abort.signal.aborted) return;
     console.error('Erreur marchand:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
       return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
