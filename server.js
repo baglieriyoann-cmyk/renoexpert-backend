@@ -2296,6 +2296,8 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 
   marchand: `Tu es un expert marchand de biens français senior. Analyse ce bien pour une opération MB (marchand de biens) avec engagement de revente sous 5 ans, frais notaire MB 3% (article 1115 CGI).
 
+IMPORTANT — Estimation des travaux : utilise des tarifs artisans standards 2025 (ni low-cost, ni premium). Pour CHAQUE poste, distingue MATÉRIAUX et MAIN D'ŒUVRE séparément. Si l'utilisateur a fourni ses propres chiffres dans ses précisions, cale-toi sur ces valeurs et reste cohérent avec eux plutôt que de recalculer.
+
 # 💼 Dossier Marchand de Biens
 
 ## Synthèse exécutive
@@ -2320,8 +2322,14 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 
 ## Stratégie proposée
 ### Travaux à réaliser
-- [Liste détaillée par poste]
-- Budget total estimé : XX €
+
+| Poste | Matériaux | Main d'œuvre | Total |
+|---|---|---|---|
+| [Ex : Salle de bain] | X 000 € | X 000 € | X 000 € |
+
+- **Matériaux total : XX €**
+- **Main d'œuvre total : XX €**
+- **Budget total travaux : XX €**
 
 ### Découpage envisagé
 [Si division en lots]
@@ -2331,7 +2339,8 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 ### Coûts
 - Prix achat : XX €
 - Frais notaire MB (3%) : XX €
-- Travaux : XX €
+- Travaux matériaux : XX €
+- Travaux main d'œuvre : XX €
 - Frais financiers : XX €
 - Honoraires : XX €
 - Commercialisation : XX €
