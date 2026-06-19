@@ -529,8 +529,12 @@ async function initDB() {
       )
     `);
 
-    // Migration juin 2026 : beta ouverte — tous les utilisateurs passent en illimite + 10 crédits
-    await pool.query(`UPDATE users SET plan = 'illimite', credits = 10 WHERE plan = 'gratuit'`);
+    // Migration juin 2026 : correction — remet tous les utilisateurs en 'gratuit' + 10 crédits (sauf admin)
+    if (ADMIN_EMAIL) {
+      await pool.query(`UPDATE users SET plan = 'gratuit', credits = 10 WHERE email != $1`, [ADMIN_EMAIL]);
+    } else {
+      await pool.query(`UPDATE users SET plan = 'gratuit', credits = 10`);
+    }
 
     console.log('✅ Base de données initialisée');
   } catch (err) {
