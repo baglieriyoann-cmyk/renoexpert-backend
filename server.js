@@ -1192,8 +1192,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // Hash du mot de passe
     const passwordHash = await bcrypt.hash(password, 10);
     
-    // Plan : illimité pour tous (beta ouverte)
-    const plan = 'illimite';
+    const plan = 'gratuit';
     
     // Créer le token de session (valide 30 jours)
     const sessionToken = generateToken();
@@ -3983,11 +3982,7 @@ app.get('/admin/users', async (req, res) => {
     const rows = result.rows.map(u => {
       const nbA = parseInt(u.nb_analyses || 0);
       const nbC = parseInt(u.credits || 0);
-      let ac = 'quota-ok';
-      if (u.plan !== 'illimite') {
-        if (nbA >= LIMITE_ANALYSES_GRATUIT) ac = 'quota-max';
-        else if (nbA >= LIMITE_ANALYSES_GRATUIT - 1) ac = 'quota-warn';
-      }
+      const ac = 'quota-ok';
       const creditsBadge = '<span class="credits-badge ' + (nbC > 0 ? 'credits-ok' : 'credits-zero') + '" id="credits-' + u.id + '">'
         + (u.plan === 'illimite' ? '&#8734;' : nbC + ' cr.') + '</span>';
       const rechargeBtn = u.plan !== 'illimite'
@@ -4003,7 +3998,7 @@ app.get('/admin/users', async (req, res) => {
         + '<td><span class="plan ' + u.plan + '">' + u.plan + '</span></td>'
         + '<td>' + creditsBadge + '</td>'
         + '<td>' + rechargeBtn + '</td>'
-        + '<td><span class="' + ac + '">' + nbA + (u.plan !== 'illimite' ? ' / ' + LIMITE_ANALYSES_GRATUIT : '') + '</span></td>'
+        + '<td><span class="' + ac + '">' + nbA + ' (illimité)</span></td>'
         + '<td>' + u.nb_projets + '</td>'
         + '<td>' + new Date(u.created_at).toLocaleDateString('fr-FR') + '</td>'
         + '<td>' + (u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais') + '</td>'
