@@ -177,7 +177,7 @@ const CREDIT_COSTS = {
   default:         1    // fallback
 };
 // Crédits offerts à l'inscription (bêta)
-const CREDITS_BETA = 3;
+const CREDITS_BETA = 10;
 // Limite d'analyses affichée dans le dashboard admin (historique, avant système crédits)
 const LIMITE_ANALYSES_GRATUIT = 10;
 // Nombre max de projets sauvegardés pour les utilisateurs non-illimités
@@ -528,6 +528,9 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Migration juin 2026 : beta ouverte — tous les utilisateurs passent en illimite + 10 crédits
+    await pool.query(`UPDATE users SET plan = 'illimite', credits = 10 WHERE plan = 'gratuit'`);
 
     console.log('✅ Base de données initialisée');
   } catch (err) {
@@ -1185,8 +1188,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     // Hash du mot de passe
     const passwordHash = await bcrypt.hash(password, 10);
     
-    // Plan : illimité si c'est l'admin, sinon gratuit
-    const plan = (emailClean === ADMIN_EMAIL) ? 'illimite' : 'gratuit';
+    // Plan : illimité pour tous (beta ouverte)
+    const plan = 'illimite';
     
     // Créer le token de session (valide 30 jours)
     const sessionToken = generateToken();
@@ -1195,7 +1198,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (email, password_hash, nom, plan, credits, profil, session_token, session_expires, last_login) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, email, nom, plan, credits, profil`,
-      [emailClean, passwordHash, nom || '', plan, plan === 'illimite' ? 9999 : CREDITS_BETA, '{}', sessionToken, sessionExpires]
+      [emailClean, passwordHash, nom || '', plan, CREDITS_BETA, '{}', sessionToken, sessionExpires]
     );
     
     const user = result.rows[0];
