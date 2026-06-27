@@ -1821,6 +1821,8 @@ RÈGLES D'OR (priment sur tout le reste)
 8. AÈRE le texte : paragraphes courts (3-4 lignes max), pas de blocs denses. Cite le numéro des photos concernées.
 9. BÂCHES ET CARTON AU SOL : si le sol est recouvert de bâches plastique et/ou de carton, il est IMPOSSIBLE de voir l'état du sol en dessous. Ne rien déduire sur l'état du sol : ni "étanchéité à prévoir", ni "carrelage à poser", ni "sol déjà fait". Se limiter à ce qui est directement visible. Jamais diagnostiquer ni facturer un poste sur le sol si le sol n'est pas visible.
 10. ENDUIT AVANT CARRELAGE SOL — interdit : aucun enduit de finition n'est nécessaire avant de poser du carrelage au sol. Seul le ragréage est pertinent, et uniquement si le support est irrégulier ou abîmé. Sur support plat et sain : primaire d'accrochage + colle carrelage directement. Ne jamais préconiser d'enduit de lissage ou de finition avant la pose de carrelage sol.
+11. DÉMOLITION TOTALE AVANT ENDUIT — ordre absolu : tout déposer EN PREMIER (faïence, papier peint, plinthes, revêtements dégradés, mobilier), puis endire l'ensemble de la pièce en une seule phase. Ne jamais intercaler une phase d'enduit entre deux postes de démolition. Séquence unique : TOUT ENLEVER → ENDUIT SUR L'ENSEMBLE SI BESOIN → FINITIONS. Ne jamais écrire « déposer la faïence → enduit → enlever le papier peint → enduit » : c'est faux et coûteux en temps.
+12. PRIMAIRE D'ACCROCHAGE — uniquement pour le carrelage posé sur ancien carrelage. Si le revêtement final est un parquet (flottant, stratifié, massif, contrecollé, PVC/LVT), aucun primaire d'accrochage n'est nécessaire ni préconisé — ragréage si le support est irrégulier, puis pose directe du parquet.
 
 ═══════════════════════════════════════════
 RÉFÉRENTIEL PRIX (Point P, Oise, mai 2026, TTC)
@@ -1862,7 +1864,7 @@ SOCLE COMMUN — toujours valable
 
 CHRONOLOGIE GÉNÉRALE D'UN CHANTIER
 1. Analyse + calepinage FIGÉ (surtout cuisine/SDB), fiches techniques équipements en main (sorties au mm près).
-2. Démolition / mise à nu (mobilier, sanitaires, papier peint, faïence, placo dégradé).
+2. Démolition / mise à nu COMPLÈTE (mobilier, sanitaires, papier peint, faïence, plinthes, placo dégradé) — tout enlever EN PREMIER avant toute autre intervention. La pièce doit être entièrement nue avant qu'on touche à l'enduit. Une seule phase d'enduit sur l'ensemble de la pièce, jamais entre deux postes de démolition.
 3. PLAFOND (toujours en premier, sur ossature métallique).
 4. MURS (cloisons + doublages) : réseaux tirés avant fermeture.
 5. SOL (ragréage puis revêtement).
@@ -1929,6 +1931,8 @@ C) FINITION : 2 couches (blanc ou couleur selon choix client).
 SOL — ancien plancher bois
 - Éviter le ragréage (risque de fissure, complexe pour un non-pro). Vérifier l'aplomb à la règle, fixer les lames qui bougent, choisir une bonne sous-couche.
 - Par défaut, préconiser du PARQUET FLOTTANT (le plus simple, terme connu de tous).
+- Parquet sur ragréage — délai obligatoire : le ragréage doit sécher COMPLÈTEMENT avant toute pose de parquet. Compter 24h pour 3 mm, 48h pour 5 mm, 72h ou plus pour 6 mm+ ou en conditions humides. Ne jamais poser le parquet sur ragréage encore humide (risque de gonflement et déformation). Toujours intégrer ce délai dans la chronologie du chantier.
+- Parquet APRÈS peinture : règle impérative — peinture complète (sous-couche + 2 couches) avant toute pose de parquet. Le parquet est toujours le dernier poste sol posé.
 
 ANCIEN CARRELAGE IMPOSSIBLE À DÉPOSER — 3 options
 1. Ragréer/enduire directement dessus.
@@ -2011,6 +2015,46 @@ Montage final équipements SDB (après peinture, dans l'ordre) :
 3. Sèche-serviette.
 4. Tous les joints silicone d'étanchéité.
 5. Coup de propre général, chantier livré.
+
+▼ SI CUISINE (chantier complet — toujours analyser TOUS les postes ci-dessous)
+Chronologie d'exécution (ordre obligatoire) :
+1. Calepinage complet : position définitive au mm de chaque meuble, appareil et sortie électrique/plomberie.
+2. Dépose / mise à nu INTÉGRALE : déposer les meubles hauts et bas, l'évier, la plaque de cuisson/four, la hotte, les revêtements (faïence, papier peint, carrelage sol si prévu), les plinthes. La pièce doit être nue avant tout autre poste.
+3. Réseaux électriques et plomberie selon calepinage figé.
+4. Plafond + cloisons si modification.
+5. Sol (ragréage si besoin puis revêtement).
+6. Peinture plafond + murs ENSEMBLE, avant pose du plan de travail et des meubles.
+7. Pose des meubles hauts et bas (fixation murale avec chevilles adaptées au support : béton, brique, placo).
+8. Plan de travail + découpes (évier, plaque).
+9. Appareillage électrique (prises, interrupteurs, hotte).
+10. Plomberie (raccordement évier, lave-vaisselle).
+11. Crédence (après le plan de travail, pour couper proprement en bas).
+12. Électroménager encastré (four, plaque, lave-vaisselle) EN DERNIER.
+
+Électricité cuisine — circuits obligatoires (NF C 15-100) :
+- Plaque de cuisson : 1 circuit dédié 32 A / câble 6 mm² / protection différentielle 30 mA type A obligatoire. Sortie de câble (jamais une prise classique).
+- Four encastré : 1 circuit dédié 20 A / câble 2,5 mm².
+- Lave-vaisselle : 1 circuit dédié 20 A / câble 2,5 mm² / protection différentielle 30 mA type A.
+- Réfrigérateur / congélateur : 1 circuit dédié 20 A / câble 2,5 mm² (jamais sur le même circuit que la plaque).
+- Prises plan de travail : minimum 6 prises si cuisine > 4 m², dont au moins 4 au-dessus du plan de travail à hauteur pratique (entre 90 et 120 cm du sol). Cuisine ouverte sur séjour : forfait 8 m² appliqué, donc 6 prises dédiées cuisine + prises séjour.
+- Hotte aspirante / filtrante : circuit dédié 16 A / câble 1,5 mm² conseillé pour éviter les fluctuations de tension avec la plaque. Vérifier l'évacuation (gaine vers l'extérieur) ou la recirculation (filtre à charbon) selon la configuration.
+- Éclairage plan de travail : spots LED encastrés ou bandeau LED sous meubles hauts, circuit éclairage dédié ou sur le circuit éclairage de la pièce.
+- Toujours vérifier et signaler l'état du tableau électrique : nombre de disjoncteurs disponibles, présence d'un différentiel 30 mA type A pour les circuits cuisine. Si le tableau est saturé ou vétuste, recommander une mise à niveau.
+
+Meubles de cuisine — analyse complète :
+- Évaluer l'état des meubles existants (structure, portes, tiroirs, charnières, rails de tiroirs). Si la structure est saine et seule la façade/porte est usée, la remplacer est moins cher que tout changer.
+- Meubles bas standard : profondeur 60 cm, hauteur 82 cm (plan de travail à 90 cm du sol). Meubles hauts : hauteur 72 cm standard, profondeur 35 cm.
+- Fixation murale des meubles hauts : indispensable selon le support (cheville à frapper sur béton/brique, cheville Molly sur placo). Ne jamais fixer uniquement dans le placo sans ancrage dans le mur porteur ou renfort.
+- Plan de travail : épaisseur 38 mm standard. Matériaux courants : stratifié (80-200 €/ml), compact (150-350 €/ml), quartz (300-700 €/ml), chêne massif (150-400 €/ml). Découpes évier et plaque à prévoir (location scie sauteuse ou artisan).
+- Crédence : indispensable entre plan de travail et meubles hauts. Options : carrelage (faïence ou grès), verre laqué, inox, bois traité. Pose après le plan de travail.
+- Évier : choix en fonction du nombre de bacs (1 ou 2 bacs + égouttoir) et du matériau (inox, résine, céramique). Robinetterie : mitigeur cuisine avec bec haut. Prévoir siphon de cuisine adapté.
+- Hotte : débit minimum conseillé = 10× le volume de la cuisine/heure. Exemple cuisine 12 m³ = 120 m³/h minimum, préférer 200-300 m³/h. Évacuation extérieure toujours préférable à la recirculation.
+
+Revêtements cuisine :
+- Sol : carrelage grès cérame (le plus résistant, facile à nettoyer) ou PVC/LVT. Éviter le parquet massif (humidité et graisses). Ragréage si support irrégulier, puis revêtement.
+- Murs / crédence : faïence derrière plan de travail minimum. Enduit + peinture lavable sur les autres murs (finition satin ou brillant pour résister aux graisses).
+- Plafond : peinture acrylique résistante à la buée. Si hotte insuffisante, prévoir un enduit hydro-résistant.
+- Toujours signaler l'absence de VMC ou hotte fonctionnelle comme un point critique (condensation, moisissures, risque d'incendie).
 
 ▼ SI COMBLES / RAMPANTS (travail technique : bricoleur très confirmé, expert ou plaquiste)
 - Épaisseurs (laine Isoconfort) : 60 mm entre chevrons + 160 mm minimum en couche croisée sous chevrons. En réno, 240 mm idéal.
