@@ -998,36 +998,14 @@ function getCreditCost(req) {
   return CREDIT_COSTS.complet; // toutes les autres analyses = rapport complet = 3
 }
 
-// Vérifie que l'utilisateur a assez de crédits AVANT l'appel IA
+// Mode 100% gratuit — vérification de crédits désactivée
 async function checkCredits(req, res, next) {
-  if (req.user.plan === 'illimite') return next(); // admin : toujours OK
-  const cost = getCreditCost(req);
-  const credits = parseInt(req.user.credits || 0);
-  if (credits < cost) {
-    return res.status(403).json({
-      error: `Crédits insuffisants. Cette analyse coûte ${cost} crédit${cost > 1 ? 's' : ''}. Votre solde : ${credits} crédit${credits !== 1 ? 's' : ''}.`,
-      code: 'CREDITS_INSUFFISANTS',
-      credits_restants: credits,
-      credits_necessaires: cost
-    });
-  }
-  req.creditCost = cost; // mémorise pour déduire après l'analyse
+  req.creditCost = getCreditCost(req);
   next();
 }
 
-// Déduit les crédits après une analyse réussie (atomique : échoue si crédits insuffisants)
+// Mode 100% gratuit — déduction de crédits désactivée
 async function deductCredits(userId, cost) {
-  try {
-    const result = await pool.query(
-      'UPDATE users SET credits = credits - $1 WHERE id = $2 AND credits >= $1 RETURNING credits',
-      [cost, userId]
-    );
-    if (result.rows.length === 0) {
-      console.error('[BILLING-MISS] Déduction impossible (crédits insuffisants ou race condition) — userId:', userId, 'cost:', cost);
-    }
-  } catch (err) {
-    console.error('[BILLING-MISS] Erreur déduction crédits — userId:', userId, 'cost:', cost, 'err:', err.message);
-  }
 }
 
 // Compat : checkAnalysesQuota redirige vers checkCredits
