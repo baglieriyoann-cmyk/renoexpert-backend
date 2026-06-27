@@ -2722,7 +2722,7 @@ function fileToContent(file, resizedBuffer) {
   };
 }
 
-async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = [], signal = null) {
+async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = []) {
   const content = [];
   if (additionalContext) content.push({ type: 'text', text: additionalContext });
   for (const doc of extraDocs) content.push(fileToContent(doc));
@@ -2759,7 +2759,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
       messages: [{ role: 'user', content }]
-    }, { timeout: 180 * 1000, ...(signal ? { signal } : {}) });
+    }, { timeout: 180 * 1000 });
   } catch (err) {
     // Enrichir le message d'erreur pour faciliter le diagnostic
     const status = err.status || err.statusCode || null;
@@ -2832,8 +2832,6 @@ ${systemPrompt}`;
 // ROUTE EXPRESS — Chiffrage rapide (1 crédit, ~30 secondes)
 // ============================================================
 app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.array('photos', 5), async (req, res) => {
-  const abort = new AbortController();
-  req.on('close', () => abort.abort());
   try {
     const { context_bien, description } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
@@ -2842,23 +2840,16 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
       context_bien ? `Contexte du bien : ${context_bien}` : '',
       description ? `Description : ${description}` : ''
     ].filter(Boolean).join('\n');
-    const analysis = await analyzeWithClaude(PROMPTS.express, req.files, context, [], [], abort.signal);
-    if (abort.signal.aborted) return;
+    const analysis = await analyzeWithClaude(PROMPTS.express, req.files, context);
     await incrementAnalysesCounter(req.user.id, 'express', req.creditCost || 1);
-    res.json({ success: true, analysis, mode: 'express' });
+    if (!res.headersSent) res.json({ success: true, analysis, mode: 'express' });
   } catch (error) {
-    if (abort.signal.aborted) {
-      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
-      return;
-    }
     console.error('Erreur express:', error);
     if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
-  const abort = new AbortController();
-  req.on('close', () => abort.abort());
   try {
     const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2882,7 +2873,6 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
       context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
       context += regime_fiscal ? `Régime fiscal envisagé : ${regime_fiscal}\n` : '';
     }
-    // Vraies données de prix DVF pour situer la valeur du bien
     const cpV = extraireCodePostal(location);
     const dvfV = await getDVFData(cpV, extraireNomCommune(location));
     context += buildDVFContext(dvfV, prix_m2_agent);
@@ -2890,15 +2880,10 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments, abort.signal);
-    if (abort.signal.aborted) return;
+    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
-    res.json({ success: true, analysis });
+    if (!res.headersSent) res.json({ success: true, analysis });
   } catch (error) {
-    if (abort.signal.aborted) {
-      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
-      return;
-    }
     console.error('Erreur visite:', error);
 
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
@@ -2919,31 +2904,22 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
 });
 
 app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, upload.array('photos', 10), async (req, res) => {
-  const abort = new AbortController();
-  req.on('close', () => abort.abort());
   try {
     const { description, precisions } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (req.files.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées pour cette analyse.' });
     const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments, abort.signal);
-    if (abort.signal.aborted) return;
+    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
-    res.json({ success: true, analysis });
+    if (!res.headersSent) res.json({ success: true, analysis });
   } catch (error) {
-    if (abort.signal.aborted) {
-      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
-      return;
-    }
     console.error('Erreur reparation:', error);
     if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
-  const abort = new AbortController();
-  req.on('close', () => abort.abort());
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes, dpe_ademe_data } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -2969,7 +2945,6 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
       ? `\nPOTENTIEL DU BIEN signalé par l'agent (TRÈS IMPORTANT pour l'estimation) : ${potentiel.trim()}\nCe potentiel crée une valeur au-delà du simple prix au m² — explique-le dans la fiche et chiffre la plus-value réalisable.\n`
       : '';
 
-    // DPE ADEME fallback : utilisé si aucun fichier DPE n'est fourni
     let dpeAdemeBloc = '';
     let dpeAdemeData = null;
     if (dpeFiles.length === 0 && dpe_ademe_data) {
@@ -2987,20 +2962,15 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments, abort.signal);
-    if (abort.signal.aborted) return;
+    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
-    res.json({
+    if (!res.headersSent) res.json({
       success: true, analysis, agence_nom, agent_nom,
       dpe_fourni: dpeFiles.length > 0,
       dpe_ademe: dpeAdemeData ? { classe: dpeAdemeData.classe_energie, ajustement_pct: dpeAdemeData.ajustement_pct } : null,
       dvf_utilise: !!dvf
     });
   } catch (error) {
-    if (abort.signal.aborted) {
-      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
-      return;
-    }
     console.error('Erreur agent:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
       if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
@@ -3011,8 +2981,6 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 });
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
-  const abort = new AbortController();
-  req.on('close', () => abort.abort());
   try {
     const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes } = req.body;
     const photos = (req.files && req.files.photos) || [];
@@ -3029,7 +2997,6 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
     const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
       ? `\nSpécifications assainissement : ${assainissement_notes.trim()}\n`
       : '';
-    // Vraies données de prix DVF pour estimer la revente de façon fiable
     const cp = extraireCodePostal(location);
     const nomCommune = extraireNomCommune(location);
     const dvf = await getDVFData(cp, nomCommune);
@@ -3049,16 +3016,11 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments, abort.signal);
-    if (abort.signal.aborted) return;
+    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
-    res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
+    if (!res.headersSent) res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
-    if (abort.signal.aborted) {
-      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
-      return;
-    }
     console.error('Erreur marchand:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
       if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
