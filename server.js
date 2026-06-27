@@ -2753,11 +2753,20 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
 
   content.push({ type: 'text', text: prompt });
 
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
-    messages: [{ role: 'user', content }]
-  }, { timeout: 180 * 1000, ...(signal ? { signal } : {}) });
+  let message;
+  try {
+    message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      messages: [{ role: 'user', content }]
+    }, { timeout: 180 * 1000, ...(signal ? { signal } : {}) });
+  } catch (err) {
+    // Enrichir le message d'erreur pour faciliter le diagnostic
+    const status = err.status || err.statusCode || null;
+    const errType = err.constructor && err.constructor.name !== 'Error' ? err.constructor.name : null;
+    console.error(`❌ Anthropic API error [${status || 'no status'}] ${errType || ''}: ${err.message}`);
+    throw err;
+  }
 
   return message.content[0].text;
 }
@@ -2838,9 +2847,12 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
     await incrementAnalysesCounter(req.user.id, 'express', req.creditCost || 1);
     res.json({ success: true, analysis, mode: 'express' });
   } catch (error) {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted) {
+      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
+      return;
+    }
     console.error('Erreur express:', error);
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
@@ -2883,12 +2895,15 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted) {
+      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
+      return;
+    }
     console.error('Erreur visite:', error);
 
-    // Notification email en cas d'erreur (optionnel)
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      return;
     }
 
     if (NOTIFICATION_EMAIL && BREVO_API_KEY) {
@@ -2899,7 +2914,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
       ));
     }
 
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
@@ -2917,9 +2932,12 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted) {
+      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
+      return;
+    }
     console.error('Erreur reparation:', error);
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
@@ -2979,12 +2997,16 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
       dvf_utilise: !!dvf
     });
   } catch (error) {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted) {
+      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
+      return;
+    }
     console.error('Erreur agent:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      return;
     }
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
@@ -3033,12 +3055,16 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus 
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
   } catch (error) {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted) {
+      if (!res.headersSent) res.status(499).json({ error: 'Requête annulée (déconnexion client)' });
+      return;
+    }
     console.error('Erreur marchand:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      return;
     }
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
@@ -3959,24 +3985,10 @@ app.get('/admin/users', async (req, res) => {
 
     const rows = result.rows.map(u => {
       const nbA = parseInt(u.nb_analyses || 0);
-      const nbC = parseInt(u.credits || 0);
-      const ac = 'quota-ok';
-      const creditsBadge = '<span class="credits-badge ' + (nbC > 0 ? 'credits-ok' : 'credits-zero') + '" id="credits-' + u.id + '">'
-        + (u.plan === 'illimite' ? '&#8734;' : nbC + ' cr.') + '</span>';
-      const rechargeBtn = u.plan !== 'illimite'
-        ? '<div class="credit-form">'
-          + '<select id="action-' + u.id + '"><option value="add">+</option><option value="set">=</option></select>'
-          + '<input type="number" id="nb-' + u.id + '" value="3" min="0" max="100">'
-          + '<button class="btn-credit" onclick="recharger(\'' + escapeHtml(u.email) + '\',\'' + u.id + '\')">&#10003;</button>'
-          + '</div>'
-        : '<span style="color:#9b8672;font-size:12px">&mdash;</span>';
       return '<tr>'
         + '<td><strong>' + escapeHtml(u.email) + '</strong></td>'
         + '<td>' + escapeHtml(u.nom || '-') + '</td>'
-        + '<td><span class="plan ' + u.plan + '">' + u.plan + '</span></td>'
-        + '<td>' + creditsBadge + '</td>'
-        + '<td>' + rechargeBtn + '</td>'
-        + '<td><span class="' + ac + '">' + nbA + ' (illimité)</span></td>'
+        + '<td><span class="quota-ok">' + nbA + '</span></td>'
         + '<td>' + u.nb_projets + '</td>'
         + '<td>' + new Date(u.created_at).toLocaleDateString('fr-FR') + '</td>'
         + '<td>' + (u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais') + '</td>'
@@ -3989,15 +4001,7 @@ app.get('/admin/users', async (req, res) => {
       + 'h1{font-size:26px}h2{font-size:18px;margin-bottom:18px}.section{background:white;padding:24px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.05);margin-bottom:20px}'
       + 'table{width:100%;border-collapse:collapse}th{background:#f5f7fb;padding:10px;text-align:left;font-size:11px;color:#5e6987;font-weight:600;border-bottom:2px solid #e8eef7;text-transform:uppercase}'
       + 'td{padding:9px 10px;border-bottom:1px solid #f0f3f8;font-size:13px;vertical-align:middle}tr:hover{background:#f8faff}'
-      + '.plan{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600}'
-      + '.plan.gratuit{background:#e6f0ff;color:#0052cc}.plan.illimite{background:linear-gradient(135deg,#f0e6ff,#ffe6f5);color:#7c3aed}'
-      + '.credits-badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:700}'
-      + '.credits-ok{background:#e8f5f1;color:#2d7a58}.credits-zero{background:#fef2f2;color:#dc2626}'
-      + '.credit-form{display:inline-flex;align-items:center;gap:5px}'
-      + '.credit-form input{width:48px;padding:4px 6px;border:1px solid #d0d8e8;border-radius:6px;font-size:12px;text-align:center}'
-      + '.credit-form select{padding:4px 5px;border:1px solid #d0d8e8;border-radius:6px;font-size:11px}'
-      + '.btn-credit{padding:4px 10px;background:#3d7a68;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer}'
-      + '.quota-ok{color:#0aa05a;font-weight:600}.quota-warn{color:#f59e0b;font-weight:600}.quota-max{color:#dc2626;font-weight:700}'
+      + '.quota-ok{color:#0aa05a;font-weight:600}'
       + '.tabs{display:flex;gap:10px;margin-bottom:20px}'
       + '.tab{padding:10px 20px;background:white;border:1px solid #e8eef7;border-radius:10px;font-weight:600;color:#5e6987;text-decoration:none}'
       + '.tab.active{background:#3d7a68;color:white;border-color:#3d7a68}'
@@ -4016,7 +4020,7 @@ app.get('/admin/users', async (req, res) => {
       + '<button onclick="exporterCSV()" style="padding:8px 18px;border-radius:6px;border:none;background:#1B4FD8;color:white;font-weight:bold;cursor:pointer;">Exporter CSV</button>'
       + '<span id="compteur-users" style="line-height:36px;color:#4a5568;font-size:13px;"></span>'
       + '</div>'
-      + '<table><thead><tr><th>Email</th><th>Nom</th><th>Plan</th><th>Cr&eacute;dits</th><th>Recharger</th><th>Analyses</th><th>Projets</th><th>Inscrit</th><th>Derni&egrave;re co.</th></tr></thead>'
+      + '<table><thead><tr><th>Email</th><th>Nom</th><th>Analyses lanc&eacute;es</th><th>Projets sauvegard&eacute;s</th><th>Inscrit</th><th>Derni&egrave;re co.</th></tr></thead>'
       + '<tbody>' + rows + '</tbody></table></div></div>'
       + '<div class="toast" id="toast"></div>'
       + '<script>async function recharger(email,userId){'
@@ -4036,7 +4040,7 @@ app.get('/admin/users', async (req, res) => {
       + 'const lignes=document.querySelectorAll("table tbody tr");'
       + 'let compteur=0;'
       + 'lignes.forEach(ligne=>{'
-      + 'const celluleAnalyses=ligne.cells[5];'
+      + 'const celluleAnalyses=ligne.cells[2];'
       + 'if(!celluleAnalyses)return;'
       + 'const nb=parseInt(celluleAnalyses.textContent.trim())||0;'
       + 'let afficher=true;'
@@ -4051,13 +4055,14 @@ app.get('/admin/users', async (req, res) => {
       + 'event.target.style.opacity="1";}'
       + 'function exporterCSV(){'
       + 'const lignes=document.querySelectorAll("table tbody tr");'
-      + 'let csv="EMAIL,NOM,ANALYSES\\n";'
+      + 'let csv="EMAIL,NOM,ANALYSES LANCEES,PROJETS SAUVEGARDES\\n";'
       + 'lignes.forEach(ligne=>{'
       + 'if(ligne.style.display==="none")return;'
       + 'const email=ligne.cells[0]?.textContent.trim()||"";'
       + 'const nom=ligne.cells[1]?.textContent.trim()||"";'
-      + 'const analyses=ligne.cells[5]?.textContent.trim()||"";'
-      + 'csv+=`"${email}","${nom}","${analyses}"\\n`;'
+      + 'const analyses=ligne.cells[2]?.textContent.trim()||"";'
+      + 'const projets=ligne.cells[3]?.textContent.trim()||"";'
+      + 'csv+=`"${email}","${nom}","${analyses}","${projets}"\\n`;'
       + '});'
       + 'const blob=new Blob([csv],{type:"text/csv"});'
       + 'const url=URL.createObjectURL(blob);'
@@ -4529,6 +4534,36 @@ app.get('/admin/maintenance/rebuild-projets', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ============================================================
+// DIAGNOSTIC SANTÉ — teste la connectivité Anthropic + DB
+// ============================================================
+app.get('/api/health', async (req, res) => {
+  const result = { ok: true, anthropic: null, db: null, model: 'claude-sonnet-4-6' };
+  try {
+    const ping = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'Réponds juste: OK' }] }]
+    }, { timeout: 30000 });
+    result.anthropic = 'ok';
+    result.anthropic_response = ping.content[0]?.text?.slice(0, 50);
+  } catch (e) {
+    result.ok = false;
+    result.anthropic = 'error';
+    result.anthropic_error = e.message;
+    result.anthropic_status = e.status || e.statusCode || null;
+  }
+  try {
+    await pool.query('SELECT 1');
+    result.db = 'ok';
+  } catch (e) {
+    result.ok = false;
+    result.db = 'error';
+    result.db_error = e.message;
+  }
+  res.status(result.ok ? 200 : 503).json(result);
 });
 
 // ============================================================
