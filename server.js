@@ -2020,16 +2020,18 @@ Montage final équipements SDB (après peinture, dans l'ordre) :
 Chronologie d'exécution (ordre obligatoire) :
 1. Calepinage complet : position définitive au mm de chaque meuble, appareil et sortie électrique/plomberie.
 2. Dépose / mise à nu INTÉGRALE : déposer les meubles hauts et bas, l'évier, la plaque de cuisson/four, la hotte, les revêtements (faïence, papier peint, carrelage sol si prévu), les plinthes. La pièce doit être nue avant tout autre poste.
-3. Réseaux électriques et plomberie selon calepinage figé.
-4. Plafond + cloisons si modification.
-5. Sol (ragréage si besoin puis revêtement).
-6. Peinture plafond + murs ENSEMBLE, avant pose du plan de travail et des meubles.
-7. Pose des meubles hauts et bas (fixation murale avec chevilles adaptées au support : béton, brique, placo).
-8. Plan de travail + découpes (évier, plaque).
-9. Appareillage électrique (prises, interrupteurs, hotte).
-10. Plomberie (raccordement évier, lave-vaisselle).
-11. Crédence (après le plan de travail, pour couper proprement en bas).
-12. Électroménager encastré (four, plaque, lave-vaisselle) EN DERNIER.
+3. Électricité EN PREMIER : adapter tous les circuits et sorties selon le nouvel emplacement des meubles. Reboucher toutes les saignées de câbles au MAP (plâtre de rebouchage) — OBLIGATOIRE avant tout enduit de finition. Le MAP doit être sec et poncé avant d'enduire les murs.
+4. Plomberie selon calepinage figé.
+5. Plafond + cloisons si modification.
+6. Sol (ragréage si besoin puis revêtement).
+7. Peinture plafond + murs ENSEMBLE, avant pose du plan de travail et des meubles.
+8. Meubles bas EN PREMIER (fixation murale avec chevilles adaptées au support : béton, brique, placo). Toujours poser les meubles bas avant les meubles hauts.
+9. Plan de travail + découpes (évier, plaque) : à poser après les meubles bas et avant les meubles hauts.
+10. Meubles hauts (fixation murale avec chevilles adaptées : béton, brique, placo).
+11. Appareillage électrique (prises, interrupteurs, hotte).
+12. Plomberie (raccordement évier, lave-vaisselle).
+13. Crédence (après le plan de travail, pour couper proprement en bas).
+14. Électroménager encastré (four, plaque, lave-vaisselle) EN DERNIER.
 
 Électricité cuisine — circuits obligatoires (NF C 15-100) :
 - Plaque de cuisson : 1 circuit dédié 32 A / câble 6 mm² / protection différentielle 30 mA type A obligatoire. Sortie de câble (jamais une prise classique).
@@ -2055,6 +2057,20 @@ Revêtements cuisine :
 - Murs / crédence : faïence derrière plan de travail minimum. Enduit + peinture lavable sur les autres murs (finition satin ou brillant pour résister aux graisses).
 - Plafond : peinture acrylique résistante à la buée. Si hotte insuffisante, prévoir un enduit hydro-résistant.
 - Toujours signaler l'absence de VMC ou hotte fonctionnelle comme un point critique (condensation, moisissures, risque d'incendie).
+
+Chiffrage cuisine — à estimer systématiquement, même sans prix précis (noter « NC » si inconnu, jamais laisser un poste sans estimation) :
+- Dépose / démolition : 300–800 € (bennes + évacuation si artisan).
+- Électricité cuisine (circuits NF C 15-100, saignées, MAP) : 800–2 500 € selon nb de circuits à créer ou déplacer.
+- Plomberie (évier, lave-vaisselle, éventuels déplacements) : 400–1 200 € selon complexité.
+- Meubles bas (hors électroménager) : 800–4 000 € selon gamme et linéaire.
+- Plan de travail : 300–2 500 € (stratifié entrée de gamme → quartz haut de gamme).
+- Meubles hauts : 400–2 500 € selon linéaire et finition.
+- Crédence : 200–800 € (faïence, verre laqué, inox).
+- Électroménager encastré : 500–3 000 € (four + plaque + hotte minimum).
+- Revêtement sol : 400–1 500 € (carrelage grès cérame ou PVC/LVT).
+- Peinture / enduit murs + plafond : 200–600 € (DIY ou artisan).
+- Évier + robinetterie : 150–600 €.
+- TOTAL CUISINE estimé : toujours donner la fourchette basse et haute. Préciser si la pose est incluse ou non dans l'estimation.
 
 ▼ SI COMBLES / RAMPANTS (travail technique : bricoleur très confirmé, expert ou plaquiste)
 - Épaisseurs (laine Isoconfort) : 60 mm entre chevrons + 160 mm minimum en couche croisée sous chevrons. En réno, 240 mm idéal.
