@@ -529,6 +529,28 @@ async function initDB() {
       )
     `);
 
+    // Suivi d'activité bêta-testeurs (preuve d'engagement pour Google Play Console)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        user_agent TEXT
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id, created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_activity_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        action_name VARCHAR(100) NOT NULL,
+        details JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_activity_user ON user_activity_logs(user_id, created_at DESC)`);
+
     // Migration juin 2026 : correction — remet tous les utilisateurs en 'gratuit' + 10 crédits (sauf admin)
     if (ADMIN_EMAIL) {
       await pool.query(`UPDATE users SET plan = 'gratuit', credits = 10 WHERE email != $1`, [ADMIN_EMAIL]);
@@ -1183,7 +1205,17 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     );
     
     const user = result.rows[0];
-    
+
+    // Suivi d'activité : une inscription vaut une première connexion
+    await pool.query(
+      'INSERT INTO user_sessions(user_id, user_agent) VALUES($1, $2)',
+      [user.id, req.headers['user-agent'] || null]
+    );
+    await pool.query(
+      'INSERT INTO user_activity_logs(user_id, action_name) VALUES($1, $2)',
+      [user.id, 'signup']
+    );
+
     // Envoyer notification email à l'admin
     if (NOTIFICATION_EMAIL && emailClean !== ADMIN_EMAIL) {
       await sendEmail(
@@ -1257,7 +1289,13 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       'UPDATE users SET session_token = $1, session_expires = $2, last_login = NOW() WHERE id = $3',
       [sessionToken, sessionExpires, user.id]
     );
-    
+
+    // Suivi d'activité bêta-testeurs : une ligne par connexion
+    await pool.query(
+      'INSERT INTO user_sessions(user_id, user_agent) VALUES($1, $2)',
+      [user.id, req.headers['user-agent'] || null]
+    );
+
     res.json({
       success: true,
       token: sessionToken,
@@ -1266,6 +1304,24 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     
   } catch (error) {
     console.error('Erreur connexion:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SUIVI D'ACTIVITÉ — enregistre une action utilisateur (bêta-test Google Play Console)
+app.post('/api/analytics/log', requireAuth, async (req, res) => {
+  try {
+    const { action_name, details } = req.body;
+    if (!action_name || typeof action_name !== 'string') {
+      return res.status(400).json({ error: 'action_name requis' });
+    }
+    await pool.query(
+      'INSERT INTO user_activity_logs(user_id, action_name, details) VALUES($1, $2, $3)',
+      [req.user.id, action_name.slice(0, 100), details ? JSON.stringify(details) : null]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur analytics log:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -3933,6 +3989,7 @@ app.get('/admin/feedbacks', async (req, res) => {
         <div class="tabs">
           <a href="/admin/feedbacks?token=${encodeURIComponent(token)}" class="tab active">📋 Feedbacks</a>
           <a href="/admin/users?token=${encodeURIComponent(token)}" class="tab">👥 Utilisateurs</a>
+          <a href="/admin/analytics?token=${encodeURIComponent(token)}" class="tab">📈 Activité</a>
         </div>
         
         <div class="section">
@@ -4033,6 +4090,7 @@ app.get('/admin/users', async (req, res) => {
       + '<div class="tabs">'
       + '<a href="/admin/feedbacks?token=' + encodeURIComponent(token) + '" class="tab">&#128203; Feedbacks</a>'
       + '<a href="/admin/users?token=' + encodeURIComponent(token) + '" class="tab active">&#128101; Utilisateurs</a>'
+      + '<a href="/admin/analytics?token=' + encodeURIComponent(token) + '" class="tab">&#128200; Activité</a>'
       + '</div>'
       + '<div class="section"><h2>Liste des utilisateurs</h2>'
       + '<div id="filtres-users" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;">'
@@ -4092,6 +4150,175 @@ app.get('/admin/users', async (req, res) => {
       + 'a.href=url;a.download="renoexpert_users_filtres.csv";a.click();}'
       + '</script></body></html>');
   } catch (error) {
+    res.status(500).send('Erreur: ' + error.message);
+  }
+});
+
+// SUIVI D'ACTIVITÉ — vue admin (preuve d'engagement bêta-testeurs pour Google Play Console)
+app.get('/admin/analytics', async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || token !== ADMIN_TOKEN) {
+      return res.status(401).send(`
+        <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Admin - RénoExpert</title>
+        <style>
+          *{margin:0;padding:0;box-sizing:border-box}
+          body{font-family:-apple-system,sans-serif;background:#f5f7fb;display:flex;align-items:center;justify-content:center;height:100vh}
+          .box{background:white;padding:40px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.1);max-width:380px;width:90%}
+          h1{color:#0066ff;margin-bottom:10px}
+          p{color:#666;margin-bottom:20px;font-size:14px}
+          input{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:8px;font-size:15px;margin-bottom:15px;box-sizing:border-box}
+          button{width:100%;padding:12px;background:#0066ff;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer}
+          .err{color:#f44336;font-size:13px;margin-bottom:10px}
+        </style></head>
+        <body><div class="box">
+          <h1>🔐 Admin RénoExpert</h1>
+          <p>Entrez votre token d'administration</p>
+          ${token && token !== ADMIN_TOKEN ? '<div class="err">❌ Token incorrect</div>' : ''}
+          <form method="GET"><input type="password" name="token" placeholder="Token admin" required autofocus><button>🔓 Se connecter</button></form>
+        </div></body></html>
+      `);
+    }
+
+    const totalSessions = await pool.query('SELECT COUNT(*) as total FROM user_sessions');
+    const totalActions = await pool.query('SELECT COUNT(*) as total FROM user_activity_logs');
+    const sessions24h = await pool.query(`SELECT COUNT(DISTINCT user_id) as total FROM user_sessions WHERE created_at > NOW() - INTERVAL '24 hours'`);
+    const sessions7j = await pool.query(`SELECT COUNT(DISTINCT user_id) as total FROM user_sessions WHERE created_at > NOW() - INTERVAL '7 days'`);
+
+    // Engagement par utilisateur : nb connexions + nb actions + dernière activité
+    const parUtilisateur = await pool.query(`
+      SELECT u.email,
+             COUNT(DISTINCT s.id) as nb_sessions,
+             COUNT(DISTINCT l.id) as nb_actions,
+             GREATEST(MAX(s.created_at), MAX(l.created_at)) as derniere_activite
+      FROM users u
+      LEFT JOIN user_sessions s ON s.user_id = u.id
+      LEFT JOIN user_activity_logs l ON l.user_id = u.id
+      GROUP BY u.email
+      HAVING COUNT(DISTINCT s.id) > 0 OR COUNT(DISTINCT l.id) > 0
+      ORDER BY derniere_activite DESC
+    `);
+
+    const recentLogs = await pool.query(`
+      SELECT u.email, l.action_name, l.details, l.created_at
+      FROM user_activity_logs l
+      JOIN users u ON u.id = l.user_id
+      ORDER BY l.created_at DESC LIMIT 150
+    `);
+
+    const recentSessions = await pool.query(`
+      SELECT u.email, s.user_agent, s.created_at
+      FROM user_sessions s
+      JOIN users u ON u.id = s.user_id
+      ORDER BY s.created_at DESC LIMIT 100
+    `);
+
+    res.send(`
+      <!DOCTYPE html>
+      <html><head><meta charset="UTF-8"><title>Admin - Activité - RénoExpert</title>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,sans-serif;background:#f5f7fb;padding:20px}
+        .container{max-width:1200px;margin:0 auto}
+        header{background:linear-gradient(135deg,#0066ff,#4d94ff);color:white;padding:30px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,102,255,0.2)}
+        h1{font-size:26px;margin-bottom:6px}
+        .subtitle{opacity:0.9;font-size:14px}
+        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+        .stat-card{background:white;padding:20px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.05);border:1px solid #e8eef7}
+        .stat-value{font-size:32px;font-weight:800;color:#0066ff;margin-bottom:4px}
+        .stat-label{color:#5e6987;font-size:12px;font-weight:500}
+        .section{background:white;padding:24px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.05);margin-bottom:20px;border:1px solid #e8eef7}
+        h2{font-size:18px;margin-bottom:18px;color:#0a0e27}
+        table{width:100%;border-collapse:collapse}
+        th{background:#f5f7fb;padding:12px;text-align:left;font-size:12px;color:#5e6987;font-weight:600;border-bottom:2px solid #e8eef7;text-transform:uppercase}
+        td{padding:12px;border-bottom:1px solid #f0f3f8;font-size:14px;word-break:break-word}
+        tr:hover{background:#f8faff}
+        .mode{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:#e6f0ff;color:#0052cc}
+        .empty{text-align:center;padding:60px 20px;color:#8b95b0}
+        .tabs{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+        .tab{padding:10px 20px;background:white;border:1px solid #e8eef7;border-radius:10px;cursor:pointer;font-weight:600;color:#5e6987;text-decoration:none}
+        .tab.active{background:#0066ff;color:white;border-color:#0066ff}
+        .scroll{max-height:500px;overflow-y:auto}
+        .details{font-size:12px;color:#8b95b0}
+      </style></head>
+      <body><div class="container">
+        <header>
+          <h1>📈 Suivi d'activité RénoExpert</h1>
+          <div class="subtitle">Connexions et actions des bêta-testeurs — preuve d'engagement Google Play Console</div>
+        </header>
+
+        <div class="tabs">
+          <a href="/admin/feedbacks?token=${encodeURIComponent(token)}" class="tab">📋 Feedbacks</a>
+          <a href="/admin/users?token=${encodeURIComponent(token)}" class="tab">👥 Utilisateurs</a>
+          <a href="/admin/analytics?token=${encodeURIComponent(token)}" class="tab active">📈 Activité</a>
+        </div>
+
+        <div class="stats">
+          <div class="stat-card"><div class="stat-value">${totalSessions.rows[0].total}</div><div class="stat-label">Connexions totales</div></div>
+          <div class="stat-card"><div class="stat-value">${sessions24h.rows[0].total}</div><div class="stat-label">Testeurs actifs (24h)</div></div>
+          <div class="stat-card"><div class="stat-value">${sessions7j.rows[0].total}</div><div class="stat-label">Testeurs actifs (7j)</div></div>
+          <div class="stat-card"><div class="stat-value">${totalActions.rows[0].total}</div><div class="stat-label">Actions enregistrées</div></div>
+        </div>
+
+        <div class="section">
+          <h2>👤 Engagement par testeur (${parUtilisateur.rows.length})</h2>
+          ${parUtilisateur.rows.length === 0 ? '<div class="empty">Aucune activité enregistrée pour le moment</div>' : `
+          <div class="scroll"><table>
+            <thead><tr><th>Email</th><th>Connexions</th><th>Actions</th><th>Dernière activité</th></tr></thead>
+            <tbody>
+              ${parUtilisateur.rows.map(u => `
+                <tr>
+                  <td>${u.email}</td>
+                  <td>${u.nb_sessions}</td>
+                  <td>${u.nb_actions}</td>
+                  <td>${u.derniere_activite ? new Date(u.derniere_activite).toLocaleString('fr-FR') : '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+          `}
+        </div>
+
+        <div class="section">
+          <h2>🕒 Dernières connexions (${recentSessions.rows.length})</h2>
+          ${recentSessions.rows.length === 0 ? '<div class="empty">Aucune connexion enregistrée</div>' : `
+          <div class="scroll"><table>
+            <thead><tr><th>Email</th><th>Date</th><th>Appareil</th></tr></thead>
+            <tbody>
+              ${recentSessions.rows.map(s => `
+                <tr>
+                  <td>${s.email}</td>
+                  <td>${new Date(s.created_at).toLocaleString('fr-FR')}</td>
+                  <td class="details">${(s.user_agent || '—').slice(0, 90)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+          `}
+        </div>
+
+        <div class="section">
+          <h2>📋 Dernières actions (${recentLogs.rows.length})</h2>
+          ${recentLogs.rows.length === 0 ? '<div class="empty">Aucune action enregistrée</div>' : `
+          <div class="scroll"><table>
+            <thead><tr><th>Email</th><th>Action</th><th>Détails</th><th>Date</th></tr></thead>
+            <tbody>
+              ${recentLogs.rows.map(l => `
+                <tr>
+                  <td>${l.email}</td>
+                  <td><span class="mode">${l.action_name}</span></td>
+                  <td class="details">${l.details ? JSON.stringify(l.details) : '—'}</td>
+                  <td>${new Date(l.created_at).toLocaleString('fr-FR')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+          `}
+        </div>
+      </div></body></html>
+    `);
+  } catch (error) {
+    console.error('Erreur admin analytics:', error);
     res.status(500).send('Erreur: ' + error.message);
   }
 });
