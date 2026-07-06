@@ -940,15 +940,12 @@ function extraireCodePostal(location) {
   return m ? m[1] : null;
 }
 
-// Extrait le nom de commune d'une chaîne (retire le code postal et la ponctuation)
+// Extrait le nom de commune d'une chaîne d'adresse (le texte qui suit le code postal)
+// Ex: "123B Rue des Jardins 73240 Saint-Genix-les-Villages" -> "Saint-Genix-les-Villages"
 function extraireNomCommune(location) {
   if (!location) return null;
-  return String(location)
-    .replace(/\b\d{5}\b/g, '')
-    .replace(/[,;]/g, ' ')
-    .trim()
-    .split(/\s{2,}/)[0]
-    .trim() || null;
+  const m = String(location).match(/\b\d{5}\b\s*[,;]?\s*(.+)$/);
+  return m ? (m[1].trim() || null) : null;
 }
 
 // Middleware pour vérifier l'authentification
@@ -3127,7 +3124,7 @@ Nombre de lots envisagés : ${nb_lots}
 ${dpeNote}${assainNote}${assainNotesBlock}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
-Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus AJUSTÉES À LA HAUSSE pour un bien rénové (un bien refait à neuf se vend dans le haut de la fourchette du secteur, voire au-dessus de la médiane).
+Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
