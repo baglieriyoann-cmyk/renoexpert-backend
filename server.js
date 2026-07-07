@@ -1876,6 +1876,7 @@ RÈGLES D'OR (priment sur tout le reste)
 10. ENDUIT AVANT CARRELAGE SOL — interdit : aucun enduit de finition n'est nécessaire avant de poser du carrelage au sol. Seul le ragréage est pertinent, et uniquement si le support est irrégulier ou abîmé. Sur support plat et sain : primaire d'accrochage + colle carrelage directement. Ne jamais préconiser d'enduit de lissage ou de finition avant la pose de carrelage sol.
 11. DÉMOLITION TOTALE AVANT ENDUIT — ordre absolu : tout déposer EN PREMIER (faïence, papier peint, plinthes, revêtements dégradés, mobilier), puis endire l'ensemble de la pièce en une seule phase. Ne jamais intercaler une phase d'enduit entre deux postes de démolition. Séquence unique : TOUT ENLEVER → ENDUIT SUR L'ENSEMBLE SI BESOIN → FINITIONS. Ne jamais écrire « déposer la faïence → enduit → enlever le papier peint → enduit » : c'est faux et coûteux en temps.
 12. PRIMAIRE D'ACCROCHAGE — uniquement pour le carrelage posé sur ancien carrelage. Si le revêtement final est un parquet (flottant, stratifié, massif, contrecollé, PVC/LVT), aucun primaire d'accrochage n'est nécessaire ni préconisé — ragréage si le support est irrégulier, puis pose directe du parquet.
+13. MAÇONNERIE NUE EN RETRAIT AUTOUR D'UNE MENUISERIE OU SUR UN MUR : ne jamais conclure trop vite à une simple finition de chantier inachevée. Si la brique/le parpaing apparaît EN RETRAIT de plusieurs centimètres par rapport au nu du mur fini (une vraie réservation, pas un joint de calfeutrement de quelques mm), c'est la trace d'un ancien complexe de doublage (placo + isolant) déposé — voir le bloc dédié ci-dessous. Ne jamais préconiser d'enduire directement sur de la maçonnerie brute ou de la mousse expansive dans ce cas.
 
 ═══════════════════════════════════════════
 RÉFÉRENTIEL PRIX (Point P, Oise, mai 2026, TTC)
@@ -2186,6 +2187,18 @@ Portes intérieures : bloc-porte (dormant + vantail) posé EN DERNIER (après so
 Escalier : à traiter par un menuisier/charpentier ; vérifier hauteur de marche (≈ 17-18 cm) et giron pour le confort, garde-corps si dénivelé.
 Estimation : dépend énormément du matériau (PVC, alu, bois) et des dimensions sur mesure ; estimer au moment de l'analyse, ne jamais figer.
 
+▼ SI MAÇONNERIE NUE EN RETRAIT / COMPLEXE DE DOUBLAGE À RECONSTITUER (mentionner seulement si pertinent)
+Deux situations se ressemblent sur photo mais sont très différentes — bien les distinguer avant de conclure :
+- POSE DE MENUISERIE NEUVE NON FINIE : la maçonnerie/l'ébrasement reste globalement AFFLEURANT au nu du mur ; seules la mousse de calage périphérique (1 à 3 cm) et l'absence de joint/enduit de finition sont visibles. → simple finition : arasage de la mousse, mastic de jonction, enduit fin sur une faible épaisseur, peinture.
+- ANCIEN DOUBLAGE DÉPOSÉ (dégât des eaux, sinistre, désamiantage, complexe pourri retiré) : la maçonnerie brute est EN RETRAIT de plusieurs centimètres par rapport au nu des murs adjacents (réservation nette correspondant à l'épaisseur d'un ancien isolant), parfois avec de la mousse expansive de calage débordante qui ne comble qu'une partie du vide. → ne jamais enduire directement sur la maçonnerie brute ou la mousse dans ce cas : l'épaisseur manquante est trop importante pour être rattrapée à l'enduit (pont thermique, épaisseur non tenable). En cas de doute réel sur l'origine (chantier neuf vs dépose suite sinistre), mentionne les deux hypothèses plutôt que d'en écarter une sans indice suffisant.
+Procédure de reconstitution (réparation localisée, pas une ossature complète type doublage de mur entier) :
+1. Mesurer l'épaisseur exacte de la réservation (généralement 60 à 100 mm selon l'ancien isolant déposé).
+2. Découper un panneau de doublage prêt à coller (placo + polystyrène ou placo + laine, épaisseur = réservation mesurée) à la bonne dimension.
+3. Encollage et pose au MAP (mortier adhésif pour plaques de plâtre) directement sur la brique/maçonnerie — pas de rail/montant pour une reprise ponctuelle de ce type.
+4. Traiter la jonction : mousse polyuréthane basse expansion si un vide subsiste en périphérie, puis bande à joint entre le nouveau panneau et l'ancien placo existant.
+5. Seulement ensuite : enduisage des bandes/jonctions, ponçage, peinture.
+Chiffrage : ajouter le panneau de doublage (placo + isolant) et le MAP ; ne pas prévoir de grosses quantités d'enduit de rebouchage pour combler la profondeur manquante — l'enduit ne sert qu'aux jonctions et à la finition, jamais au comblement d'une réservation de plusieurs centimètres.
+
 ═══════════════════════════════════════════
 FORMAT DE RÉPONSE — adapte la profondeur à l'ampleur
 ═══════════════════════════════════════════
@@ -2401,6 +2414,13 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 
 IMPORTANT — Estimation des travaux : utilise des tarifs artisans standards 2025 (ni low-cost, ni premium). Pour CHAQUE poste, distingue MATÉRIAUX et MAIN D'ŒUVRE séparément. Si l'utilisateur a fourni ses propres chiffres dans ses précisions, cale-toi sur ces valeurs et reste cohérent avec eux plutôt que de recalculer.
 
+DÉCOTE / SURCOTE SUR LE PRIX DE REVENTE (RÈGLE OBLIGATOIRE) :
+- Une rénovation complète et un excellent DPE tirent le prix vers le haut de la fourchette du secteur, mais ne compensent JAMAIS l'absence de parking/stationnement privatif ou d'espace extérieur (jardin, terrasse, balcon) : ce sont des critères de recherche déterminants pour l'acheteur, indépendants de l'état du bien.
+- Si le contexte indique "Pas de parking / stationnement privatif : OUI" ET "Pas d'espace extérieur : OUI" (les deux absents) : applique une décote de 10 à 15% sur le prix au m² visé par rapport à ce que l'état du bien seul justifierait, même refait à neuf.
+- Si un seul des deux critères est absent : décote plus mesurée de 3 à 7%, à moduler selon le secteur (un centre-ville dense pénalise moins l'absence de parking qu'une zone pavillonnaire).
+- Si les deux critères ne sont pas signalés comme absents dans le contexte : n'applique aucune décote sur ce point (l'absence de photo d'extérieur ou de parking n'est PAS une preuve d'absence — ne décote jamais sur une simple supposition).
+- Dans tous les cas où une décote est appliquée, justifie-la explicitement en une phrase dans "Prix de revente estimé" (ex : "Estimation ajustée à la baisse (-12%) par rapport au prix médian du secteur, en raison de l'absence de stationnement privatif et d'espace extérieur — deux critères déterminants pour la revente").
+
 # 💼 Dossier Marchand de Biens
 
 ## Synthèse exécutive
@@ -2451,6 +2471,7 @@ IMPORTANT — Estimation des travaux : utilise des tarifs artisans standards 202
 
 ### Revenus
 - Prix de revente estimé : XX €
+[Si une décote/surcote a été appliquée (voir règle DÉCOTE/SURCOTE), ajoute ici une ligne de justification, sinon omets cette ligne : "Ajustement : -XX% par rapport au prix médian du secteur — raison"]
 
 ### Marge
 - Marge brute : XX €
@@ -3095,7 +3116,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes } = req.body;
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes, pas_parking, pas_exterieur } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     const assainissementFiles = (req.files && req.files.assainissement) || [];
@@ -3114,6 +3135,11 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
     const nomCommune = extraireNomCommune(location);
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
+    const noParking = pas_parking === 'true' || pas_parking === true;
+    const noExterieur = pas_exterieur === 'true' || pas_exterieur === true;
+    const decoteBloc = (noParking || noExterieur)
+      ? `\nCRITÈRES PÉNALISANTS DÉCLARÉS PAR L'UTILISATEUR (à appliquer sur le prix de revente, voir règle DÉCOTE/SURCOTE du prompt) :\n- Pas de parking / stationnement privatif : ${noParking ? 'OUI' : 'non'}\n- Pas d'espace extérieur (jardin, terrasse, balcon) : ${noExterieur ? 'OUI' : 'non'}\n`
+      : '';
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
 Surface : ${surface} m²
@@ -3121,7 +3147,7 @@ Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
 Stratégie : ${strategie}
 Nombre de lots envisagés : ${nb_lots}
-${dpeNote}${assainNote}${assainNotesBlock}
+${dpeNote}${assainNote}${assainNotesBlock}${decoteBloc}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
