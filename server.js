@@ -2429,7 +2429,7 @@ DÉCOTE / SURCOTE SUR LE PRIX DE REVENTE (RÈGLE OBLIGATOIRE) :
 CRÉATION DE VALEUR — EXISTANT vs PROJET :
 Si le contexte contient une section "CARACTÉRISTIQUES DU BIEN — EXISTANT vs PROJET" avec des "LEVIERS DE CRÉATION DE VALEUR", tu DOIS : 1) chiffrer le coût de réalisation de chacun de ces leviers dans "Travaux à réaliser", 2) chiffrer la plus-value qu'ils apportent au prix de revente (comparée à un bien sans ces ajouts), 3) mentionner explicitement ces leviers dans "Potentiel" et dans la section "Recommandation finale".
 
-DOCUMENTS COMPLÉMENTAIRES (si fournis) : un DTG signale les travaux de copropriété votés/à prévoir (charge à intégrer au tableau financier si le lot y est soumis) ; une EDD précise les tantièmes de copropriété (à mentionner si pertinent pour la stratégie de division) ; un DPE Global concerne l'immeuble entier (à distinguer du DPE du lot) ; un ou plusieurs devis d'artisans donnent un chiffrage réel — compare-le à ton estimation et signale les écarts significatifs.
+DOCUMENTS COMPLÉMENTAIRES (si fournis) : les documents ne sont pas étiquetés par type, identifie toi-même la nature de chacun d'après son contenu (DPE, DPE Global, rapport d'assainissement/SPANC, DTG, EDD). Un DTG signale les travaux de copropriété votés/à prévoir (charge à intégrer au tableau financier si le lot y est soumis) ; une EDD précise les tantièmes de copropriété (à mentionner si pertinent pour la stratégie de division) ; un DPE Global concerne l'immeuble entier (à distinguer du DPE du lot) ; un ou plusieurs devis d'artisans donnent un chiffrage réel — compare-le à ton estimation et signale les écarts significatifs.
 
 # 💼 Dossier Marchand de Biens
 
@@ -2945,11 +2945,16 @@ function buildExtraDocsWithLabels({ dpeFiles = [], assainissementFiles = [], dpe
   return { extraDocs, docLabels };
 }
 
+// Parse une liste de libellés séparés par des virgules (ex: "Jardin, Terrasse") en tableau propre.
+function parseCsvList(str) {
+  return (str || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
 // Compare les caractéristiques "Existant" et "Projet" (double évaluation MB / Investisseur)
 // et calcule les leviers de création de valeur (nouveautés prévues non présentes à l'achat).
 function buildFeaturesValeurBloc(current, planned) {
-  const cur = (current || '').split(',').map(s => s.trim()).filter(Boolean);
-  const plan = (planned || '').split(',').map(s => s.trim()).filter(Boolean);
+  const cur = parseCsvList(current);
+  const plan = parseCsvList(planned);
   if (cur.length === 0 && plan.length === 0) return '';
   const nouveautes = plan.filter(f => !cur.includes(f));
   let bloc = `\n## CARACTÉRISTIQUES DU BIEN — EXISTANT vs PROJET\nCaractéristiques déjà présentes à l'achat (état actuel) : ${cur.length ? cur.join(', ') : 'aucune déclarée'}\n`;
@@ -3169,35 +3174,29 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
   }
 });
 
-app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }, { name: 'dtg', maxCount: 1 }, { name: 'devis_artisan', maxCount: 5 }, { name: 'dpe_global', maxCount: 1 }, { name: 'edd', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'documents', maxCount: 10 }, { name: 'devis', maxCount: 10 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes, pas_parking, pas_exterieur, property_features_current, property_features_planned } = req.body;
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, documents_notes, property_features_current, property_features_planned } = req.body;
     const photos = (req.files && req.files.photos) || [];
-    const dpeFiles = (req.files && req.files.dpe) || [];
-    const assainissementFiles = (req.files && req.files.assainissement) || [];
-    const dtgFiles = (req.files && req.files.dtg) || [];
-    const devisFiles = (req.files && req.files.devis_artisan) || [];
-    const dpeGlobalFiles = (req.files && req.files.dpe_global) || [];
-    const eddFiles = (req.files && req.files.edd) || [];
+    const documentsFiles = (req.files && req.files.documents) || [];
+    const devisFiles = (req.files && req.files.devis) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
-    const dpeNote = dpeFiles.length > 0
-      ? `\nDossier de diagnostics joint — utilise SES VALEURS RÉELLES (classe, kWh/m²/an, GES, assainissement) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB.\n`
-      : `\nAucun DPE fourni — estime la classe probable d'après les photos et l'année de construction.\n`;
-    const assainNote = assainissementFiles.length > 0
-      ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires et leur coût dans le tableau financier MB.\n`
-      : '';
-    const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
-      ? `\nSpécifications assainissement : ${assainissement_notes.trim()}\n`
+    const documentsNote = documentsFiles.length > 0
+      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux le DPE, un éventuel DPE Global d'immeuble, un rapport d'assainissement/SPANC, un DTG (diagnostic technique global copropriété) et/ou une EDD (état descriptif de division) d'après leur contenu. Utilise SES VALEURS RÉELLES pour le DPE repéré (classe, kWh/m²/an, GES) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB. Si un rapport d'assainissement signale une non-conformité, intègre les travaux obligatoires et leur coût dans le tableau financier MB.\n`
+      : `\nAucun document fourni — estime la classe énergétique probable d'après les photos et l'année de construction.\n`;
+    const documentsNotesBlock = documents_notes && documents_notes.trim()
+      ? `\nPrécisions transmises par l'utilisateur sur les documents fournis : ${documents_notes.trim()}\n`
       : '';
     const cp = extraireCodePostal(location);
     const nomCommune = extraireNomCommune(location);
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
-    const noParking = pas_parking === 'true' || pas_parking === true;
-    const noExterieur = pas_exterieur === 'true' || pas_exterieur === true;
+    const currentFeaturesList = parseCsvList(property_features_current);
+    const noParking = !currentFeaturesList.includes('Parking privatif');
+    const noExterieur = !currentFeaturesList.some(f => ['Jardin', 'Terrasse', 'Balcon', 'Véranda / Extension'].includes(f));
     const decoteBloc = (noParking || noExterieur)
-      ? `\nCRITÈRES PÉNALISANTS DÉCLARÉS PAR L'UTILISATEUR (à appliquer sur le prix de revente, voir règle DÉCOTE/SURCOTE du prompt) :\n- Pas de parking / stationnement privatif : ${noParking ? 'OUI' : 'non'}\n- Pas d'espace extérieur (jardin, terrasse, balcon) : ${noExterieur ? 'OUI' : 'non'}\n`
+      ? `\nCRITÈRES PÉNALISANTS DÉDUITS DES CARACTÉRISTIQUES DU BIEN COCHÉES PAR L'UTILISATEUR (à appliquer sur le prix de revente, voir règle DÉCOTE/SURCOTE du prompt) :\n- Pas de parking / stationnement privatif : ${noParking ? 'OUI' : 'non'}\n- Pas d'espace extérieur (jardin, terrasse, balcon) : ${noExterieur ? 'OUI' : 'non'}\n`
       : '';
     const featuresValeurBloc = buildFeaturesValeurBloc(property_features_current, property_features_planned);
     const context = `Société MB : ${mb_societe}
@@ -3207,14 +3206,14 @@ Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
 Stratégie : ${strategie}
 Nombre de lots envisagés : ${nb_lots}
-${dpeNote}${assainNote}${assainNotesBlock}${decoteBloc}${featuresValeurBloc}
+${documentsNote}${documentsNotesBlock}${decoteBloc}${featuresValeurBloc}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const { extraDocs, docLabels } = buildExtraDocsWithLabels({ dpeFiles, assainissementFiles, dtgFiles, devisFiles, dpeGlobalFiles, eddFiles });
+    const { extraDocs, docLabels } = buildExtraDocsWithLabels({ dpeFiles: documentsFiles, devisFiles });
     const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
@@ -3222,7 +3221,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus.
   } catch (error) {
     console.error('Erreur marchand:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
       return;
     }
     if (!res.headersSent) res.status(500).json({ error: error.message });
