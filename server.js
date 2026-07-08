@@ -2479,7 +2479,7 @@ DOCUMENTS COMPLÉMENTAIRES (si fournis) : les documents ne sont pas étiquetés 
 |---|---|---|---|---|---|---|
 | [Nom du lot] | XX m² | [Maison / Appartement / Terrain / Maison + Terrain] | [ex : Rénovation, Location longue durée] | [nouveautés prévues ou "—"] | XX € | XX € |
 
-[Une ligne par lot présent dans "DÉCOUPAGE PAR LOT" (ce sont les lots finaux, après division éventuelle). Si l'utilisateur a fourni un prix de revente visé pour un lot, pars de ce chiffre et commente sa cohérence avec le marché (DVF) plutôt que de le recalculer ; sinon, estime-le toi-même.]
+[Une ligne par lot présent dans "DÉCOUPAGE PAR LOT" (ce sont les lots finaux, après division éventuelle). Si l'utilisateur a fourni un budget travaux et/ou un prix de revente visé pour un lot, pars de ces chiffres et commente leur cohérence (avec ton estimation détaillée des travaux et avec le marché DVF) plutôt que de les recalculer sans les mentionner ; sinon, estime-les toi-même.]
 
 ## Tableau financier prévisionnel
 
@@ -2984,8 +2984,9 @@ function buildLotsContextBlock(lots) {
   lots.forEach((lot, idx) => {
     const nom = lot.name || ('Lot ' + (idx + 1));
     bloc += `\n### ${nom}\n`;
-    bloc += `- Surface : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
-    bloc += `- Nature : ${lot.type || 'non précisée'}\n`;
+    bloc += `- Surface${lot.m2Jardin ? ' habitable' : ''} : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
+    if (lot.m2Jardin) bloc += `- Surface de jardin : ${lot.m2Jardin} m²\n`;
+    bloc += `- Nature : ${lot.type || 'non précisée'}${lot.terrainSubtype ? ' — ' + lot.terrainSubtype : ''}\n`;
     if (Array.isArray(lot.currentFeatures) && lot.currentFeatures.length) {
       bloc += `- État actuel (avant travaux) : ${lot.currentFeatures.join(', ')}\n`;
     } else {
@@ -2997,6 +2998,8 @@ function buildLotsContextBlock(lots) {
     if (Array.isArray(lot.plannedFeatures) && lot.plannedFeatures.length) {
       bloc += `- Création de valeur prévue (chiffre le coût ET la plus-value de chacune) : ${lot.plannedFeatures.join(', ')}\n`;
     }
+    if (lot.precisions) bloc += `- Précisions sur ce lot : ${lot.precisions}\n`;
+    bloc += `- Budget travaux estimé par l'utilisateur pour ce lot : ${lot.travaux ? lot.travaux + ' €' : 'non précisé — à estimer'}\n`;
     bloc += `- Prix de revente visé par l'utilisateur : ${lot.revente ? lot.revente + ' €' : 'non précisé — à estimer'}\n`;
     if (lot.documentsNotes) bloc += `- Précisions documents : ${lot.documentsNotes}\n`;
     if (lot.devisNotes) bloc += `- Précisions devis : ${lot.devisNotes}\n`;
@@ -3233,7 +3236,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, uploadMarchand.fields([{ name: 'photos', maxCount: 50 }, { name: 'documents', maxCount: 60 }, { name: 'devis', maxCount: 60 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, annee_construction, mb_societe, precisions, prix_m2_agent, travaux_estime, documents_shared, documents_notes_shared } = req.body;
+    const { surface, prix_demande, location, annee_construction, mb_societe, precisions, prix_m2_agent, documents_shared, documents_notes_shared } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const documentsFiles = (req.files && req.files.documents) || [];
     const devisFiles = (req.files && req.files.devis) || [];
@@ -3268,7 +3271,7 @@ Prix demandé : ${prix_demande} €
 ${documentsNote}${documentsNotesBlock}${lotsContextBloc}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
-${travaux_estime ? `Budget travaux estimé par l'utilisateur (indicatif, tous lots) : ${travaux_estime} €\n` : ''}Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
+Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
 
 ` + precisionsBlock(precisions);
 
