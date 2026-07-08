@@ -2980,8 +2980,8 @@ function buildLotsContextBlock(lots) {
   let bloc = `\n## DÉCOUPAGE PAR LOT (${lots.length} lot${lots.length > 1 ? 's' : ''})\n`;
   lots.forEach(lot => {
     bloc += `\n### Lot ${lot.index}\n`;
-    bloc += `- Surface : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
-    if (lot.isTerrain) bloc += `- Type : terrain à détacher (division parcellaire)\n`;
+    bloc += `- Surface actuelle : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
+    bloc += `- Nature du lot (avant travaux) : ${lot.type || 'non précisée'}${(lot.type === 'Terrain' || lot.type === 'Maison + Terrain') ? ' — division parcellaire à prévoir' : ''}\n`;
     bloc += `- Prix de revente visé par l'utilisateur : ${lot.revente ? lot.revente + ' €' : 'non précisé — à estimer'}\n`;
     if (Array.isArray(lot.plannedFeatures) && lot.plannedFeatures.length) {
       bloc += `- Création de valeur prévue pour ce lot (chiffre le coût ET la plus-value de chacun) : ${lot.plannedFeatures.join(', ')}\n`;
