@@ -1854,6 +1854,11 @@ Examine TOUTES les photos montrant un espace extérieur (terrasse, balcon, faça
 ASSAINISSEMENT (si dossier de diagnostics fourni) :
 Lis la section assainissement du dossier de diagnostics. Si le bien est en assainissement non collectif (fosse septique) avec une non-conformité, ajoute dans "Travaux obligatoires" : "Assainissement non collectif non conforme — remise aux normes dans l'année suivant l'acquisition : 6 000 à 15 000 €" et intègre ce coût dans le tableau financier.
 
+CRÉATION DE VALEUR — EXISTANT vs PROJET :
+Si le contexte contient une section "CARACTÉRISTIQUES DU BIEN — EXISTANT vs PROJET" avec des "LEVIERS DE CRÉATION DE VALEUR", tu DOIS : 1) chiffrer le coût de réalisation de chacun de ces leviers dans "Travaux recommandés" (ou "Travaux obligatoires" si pertinent), 2) expliquer dans "Analyse de rentabilité" en quoi ils augmentent la valeur locative ou patrimoniale du bien, 3) les mentionner explicitement dans le "Verdict investissement".
+
+DOCUMENTS COMPLÉMENTAIRES (si fournis) : un DTG signale les travaux de copropriété votés/à prévoir (charge à intégrer au tableau financier si le lot y est soumis) ; une EDD précise les tantièmes de copropriété ; un DPE Global concerne l'immeuble entier (à distinguer du DPE du lot) ; un ou plusieurs devis d'artisans donnent un chiffrage réel — compare-le à ton estimation et signale les écarts significatifs.
+
 Sois factuel, chiffré, professionnel. Base-toi sur les données fournies ET les photos. Prix 2025-2026.`,
 
   reparation: `Tu es un expert bâtiment français senior, 20 ans de terrain. Tu analyses des photos pour diagnostiquer un problème ou chiffrer un projet de travaux, et tu rends une procédure claire à un particulier.
@@ -2421,6 +2426,11 @@ DÉCOTE / SURCOTE SUR LE PRIX DE REVENTE (RÈGLE OBLIGATOIRE) :
 - Si les deux critères ne sont pas signalés comme absents dans le contexte : n'applique aucune décote sur ce point (l'absence de photo d'extérieur ou de parking n'est PAS une preuve d'absence — ne décote jamais sur une simple supposition).
 - Dans tous les cas où une décote est appliquée, justifie-la explicitement en une phrase dans "Prix de revente estimé" (ex : "Estimation ajustée à la baisse (-12%) par rapport au prix médian du secteur, en raison de l'absence de stationnement privatif et d'espace extérieur — deux critères déterminants pour la revente").
 
+CRÉATION DE VALEUR — EXISTANT vs PROJET :
+Si le contexte contient une section "CARACTÉRISTIQUES DU BIEN — EXISTANT vs PROJET" avec des "LEVIERS DE CRÉATION DE VALEUR", tu DOIS : 1) chiffrer le coût de réalisation de chacun de ces leviers dans "Travaux à réaliser", 2) chiffrer la plus-value qu'ils apportent au prix de revente (comparée à un bien sans ces ajouts), 3) mentionner explicitement ces leviers dans "Potentiel" et dans la section "Recommandation finale".
+
+DOCUMENTS COMPLÉMENTAIRES (si fournis) : un DTG signale les travaux de copropriété votés/à prévoir (charge à intégrer au tableau financier si le lot y est soumis) ; une EDD précise les tantièmes de copropriété (à mentionner si pertinent pour la stratégie de division) ; un DPE Global concerne l'immeuble entier (à distinguer du DPE du lot) ; un ou plusieurs devis d'artisans donnent un chiffrage réel — compare-le à ton estimation et signale les écarts significatifs.
+
 # 💼 Dossier Marchand de Biens
 
 ## Synthèse exécutive
@@ -2856,10 +2866,13 @@ function fileToContent(file, resizedBuffer) {
   };
 }
 
-async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = []) {
+async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = [], docLabels = []) {
   const content = [];
   if (additionalContext) content.push({ type: 'text', text: additionalContext });
-  for (const doc of extraDocs) content.push(fileToContent(doc));
+  extraDocs.forEach((doc, i) => {
+    if (docLabels[i]) content.push({ type: 'text', text: docLabels[i] });
+    content.push(fileToContent(doc));
+  });
 
   const hasAnyComment = Array.isArray(photoComments) && photoComments.some(c => c && c.trim());
 
@@ -2914,6 +2927,37 @@ function parsePhotoComments(raw) {
   } catch (e) {
     return [];
   }
+}
+
+// Construit la liste des documents complémentaires (extraDocs) + leurs labels texte,
+// à partir des fichiers uploadés via la "Checklist Documentaire" (DPE Global, DTG, EDD, Devis Artisans).
+// dpeFiles/assainissementFiles ne portent pas de label (comportement historique inchangé).
+function buildExtraDocsWithLabels({ dpeFiles = [], assainissementFiles = [], dpeGlobalFiles = [], dtgFiles = [], eddFiles = [], devisFiles = [] } = {}) {
+  const extraDocs = [];
+  const docLabels = [];
+  const push = (files, label) => files.forEach(f => { extraDocs.push(f); docLabels.push(label); });
+  push(dpeFiles, '');
+  push(assainissementFiles, '');
+  push(dpeGlobalFiles, 'Document fourni : DPE Global de l\'immeuble / de la copropriété (distinct du DPE individuel du lot) — utile pour évaluer les parties communes.');
+  push(dtgFiles, 'Document fourni : DTG (Diagnostic Technique Global de la copropriété) — identifie les travaux de copropriété votés ou à prévoir et leur impact financier sur le lot.');
+  push(eddFiles, 'Document fourni : EDD (État Descriptif de Division) — identifie les tantièmes/millièmes de copropriété du lot.');
+  push(devisFiles, 'Document fourni : Devis d\'artisan — chiffrage réel du marché local, à confronter à ton estimation de travaux et à commenter dans le rapport.');
+  return { extraDocs, docLabels };
+}
+
+// Compare les caractéristiques "Existant" et "Projet" (double évaluation MB / Investisseur)
+// et calcule les leviers de création de valeur (nouveautés prévues non présentes à l'achat).
+function buildFeaturesValeurBloc(current, planned) {
+  const cur = (current || '').split(',').map(s => s.trim()).filter(Boolean);
+  const plan = (planned || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (cur.length === 0 && plan.length === 0) return '';
+  const nouveautes = plan.filter(f => !cur.includes(f));
+  let bloc = `\n## CARACTÉRISTIQUES DU BIEN — EXISTANT vs PROJET\nCaractéristiques déjà présentes à l'achat (état actuel) : ${cur.length ? cur.join(', ') : 'aucune déclarée'}\n`;
+  if (plan.length) bloc += `Caractéristiques prévues après travaux (projet) : ${plan.join(', ')}\n`;
+  if (nouveautes.length) {
+    bloc += `LEVIERS DE CRÉATION DE VALEUR (différence Existant → Projet) — chiffre impérativement le coût de création de chacun de ces éléments ET la plus-value qu'il apporte au prix de revente estimé : ${nouveautes.join(', ')}\n`;
+  }
+  return bloc;
 }
 
 // Helper : bloc de précisions utilisateur à injecter dans le contexte si fourni
@@ -2983,12 +3027,16 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
   }
 });
 
-app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }, { name: 'dtg', maxCount: 1 }, { name: 'devis_artisan', maxCount: 5 }, { name: 'dpe_global', maxCount: 1 }, { name: 'edd', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, assainissement_notes } = req.body;
+    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, assainissement_notes, property_features_current, property_features_planned } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     const assainissementFiles = (req.files && req.files.assainissement) || [];
+    const dtgFiles = (req.files && req.files.dtg) || [];
+    const devisFiles = (req.files && req.files.devis_artisan) || [];
+    const dpeGlobalFiles = (req.files && req.files.dpe_global) || [];
+    const eddFiles = (req.files && req.files.edd) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 20) return res.status(400).json({ error: 'Maximum 20 photos autorisées pour cette analyse.' });
     const isLocatif = visite_type === 'locatif';
@@ -3006,6 +3054,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
       context += prix_achat ? `Prix d'achat envisagé : ${prix_achat} €\n` : '';
       context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
       context += regime_fiscal ? `Régime fiscal envisagé : ${regime_fiscal}\n` : '';
+      context += buildFeaturesValeurBloc(property_features_current, property_features_planned);
     }
     const cpV = extraireCodePostal(location);
     const dvfV = await getDVFData(cpV, extraireNomCommune(location));
@@ -3013,8 +3062,12 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     context += '\n' + precisionsBlock(precisions);
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
-    const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments);
+    const { extraDocs, docLabels } = buildExtraDocsWithLabels({
+      dpeFiles, assainissementFiles, dtgFiles, devisFiles,
+      dpeGlobalFiles: isLocatif ? dpeGlobalFiles : [],
+      eddFiles: isLocatif ? eddFiles : []
+    });
+    const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     if (!res.headersSent) res.json({ success: true, analysis });
   } catch (error) {
@@ -3053,12 +3106,14 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }, { name: 'dtg', maxCount: 1 }, { name: 'devis_artisan', maxCount: 5 }]), async (req, res) => {
   try {
     const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes, dpe_ademe_data } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     const assainissementFiles = (req.files && req.files.assainissement) || [];
+    const dtgFiles = (req.files && req.files.dtg) || [];
+    const devisFiles = (req.files && req.files.devis_artisan) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
 
@@ -3095,8 +3150,8 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments);
+    const { extraDocs, docLabels } = buildExtraDocsWithLabels({ dpeFiles, assainissementFiles, dtgFiles, devisFiles });
+    const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     if (!res.headersSent) res.json({
       success: true, analysis, agence_nom, agent_nom,
@@ -3114,12 +3169,16 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
   }
 });
 
-app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }, { name: 'dtg', maxCount: 1 }, { name: 'devis_artisan', maxCount: 5 }, { name: 'dpe_global', maxCount: 1 }, { name: 'edd', maxCount: 1 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes, pas_parking, pas_exterieur } = req.body;
+    const { surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe, precisions, prix_m2_agent, assainissement_notes, pas_parking, pas_exterieur, property_features_current, property_features_planned } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
     const assainissementFiles = (req.files && req.files.assainissement) || [];
+    const dtgFiles = (req.files && req.files.dtg) || [];
+    const devisFiles = (req.files && req.files.devis_artisan) || [];
+    const dpeGlobalFiles = (req.files && req.files.dpe_global) || [];
+    const eddFiles = (req.files && req.files.edd) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
     const dpeNote = dpeFiles.length > 0
@@ -3140,6 +3199,7 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
     const decoteBloc = (noParking || noExterieur)
       ? `\nCRITÈRES PÉNALISANTS DÉCLARÉS PAR L'UTILISATEUR (à appliquer sur le prix de revente, voir règle DÉCOTE/SURCOTE du prompt) :\n- Pas de parking / stationnement privatif : ${noParking ? 'OUI' : 'non'}\n- Pas d'espace extérieur (jardin, terrasse, balcon) : ${noExterieur ? 'OUI' : 'non'}\n`
       : '';
+    const featuresValeurBloc = buildFeaturesValeurBloc(property_features_current, property_features_planned);
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
 Surface : ${surface} m²
@@ -3147,15 +3207,15 @@ Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
 Stratégie : ${strategie}
 Nombre de lots envisagés : ${nb_lots}
-${dpeNote}${assainNote}${assainNotesBlock}${decoteBloc}
+${dpeNote}${assainNote}${assainNotesBlock}${decoteBloc}${featuresValeurBloc}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
 
 ` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const extraDocs = [...dpeFiles, ...assainissementFiles];
-    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments);
+    const { extraDocs, docLabels } = buildExtraDocsWithLabels({ dpeFiles, assainissementFiles, dtgFiles, devisFiles, dpeGlobalFiles, eddFiles });
+    const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = Math.round(parseFloat(prix_demande) * 0.03);
     if (!res.headersSent) res.json({ success: true, analysis, frais_notaire_mb_3pct, dvf_utilise: !!dvf });
