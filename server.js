@@ -3236,7 +3236,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, uploadMarchand.fields([{ name: 'photos', maxCount: 50 }, { name: 'documents', maxCount: 60 }, { name: 'devis', maxCount: 60 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, annee_construction, mb_societe, precisions, prix_m2_agent, documents_shared, documents_notes_shared } = req.body;
+    const { surface, prix_demande, location, annee_construction, mb_societe, precisions, prix_m2_agent, documents_shared, documents_notes_shared, devis_shared, devis_notes_shared } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const documentsFiles = (req.files && req.files.documents) || [];
     const devisFiles = (req.files && req.files.devis) || [];
@@ -3249,7 +3249,8 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
 
     const documentsShared = documents_shared === 'true';
     const documentsLotMap = documentsShared ? [] : parseJsonArray(req.body.documents_lot_map);
-    const devisLotMap = parseJsonArray(req.body.devis_lot_map);
+    const devisShared = devis_shared === 'true';
+    const devisLotMap = devisShared ? [] : parseJsonArray(req.body.devis_lot_map);
     const photosLotMap = parseJsonArray(req.body.photos_lot_map);
 
     const documentsNote = documentsFiles.length > 0
@@ -3257,6 +3258,9 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
       : `\nAucun document fourni — estime la classe énergétique probable d'après les photos et l'année de construction.\n`;
     const documentsNotesBlock = documentsShared && documents_notes_shared && documents_notes_shared.trim()
       ? `\nPrécisions transmises par l'utilisateur sur les documents fournis (communs à tous les lots) : ${documents_notes_shared.trim()}\n`
+      : '';
+    const devisNotesBlock = devisShared && devis_notes_shared && devis_notes_shared.trim()
+      ? `\nPrécisions transmises par l'utilisateur sur les devis fournis (communs à tous les lots) : ${devis_notes_shared.trim()}\n`
       : '';
     const cp = extraireCodePostal(location);
     const nomCommune = extraireNomCommune(location);
@@ -3268,7 +3272,7 @@ Localisation : ${location}
 Surface totale : ${surface} m²
 Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
-${documentsNote}${documentsNotesBlock}${lotsContextBloc}
+${documentsNote}${documentsNotesBlock}${devisNotesBlock}${lotsContextBloc}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
@@ -3294,7 +3298,9 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus.
     });
     devisFiles.forEach((f, idx) => {
       extraDocs.push(f);
-      docLabels.push(`Devis d'artisan fourni pour le LOT ${devisLotMap[idx] || '?'} — chiffrage réel à confronter à ton estimation pour ce lot.`);
+      docLabels.push(devisShared
+        ? 'Devis d\'artisan fourni (commun à TOUS les lots) — chiffrage réel à confronter à ton estimation.'
+        : `Devis d'artisan fourni pour le LOT ${devisLotMap[idx] || '?'} — chiffrage réel à confronter à ton estimation pour ce lot.`);
     });
 
     const analysis = await analyzeWithClaude(PROMPTS.marchand, photos, context, extraDocs, photoComments, docLabels);
