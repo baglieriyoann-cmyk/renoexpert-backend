@@ -2426,15 +2426,17 @@ IMPORTANT : les packs de rénovation énergétique DPE (isolation, PAC, VMC) doi
 
 IMPORTANT — Estimation des travaux : utilise des tarifs artisans standards 2025 (ni low-cost, ni premium). Pour CHAQUE poste, distingue MATÉRIAUX et MAIN D'ŒUVRE séparément. Si l'utilisateur a fourni ses propres chiffres dans ses précisions, cale-toi sur ces valeurs et reste cohérent avec eux plutôt que de recalculer.
 
-DÉCOTE / SURCOTE SUR LE PRIX DE REVENTE (RÈGLE OBLIGATOIRE) :
-- Une rénovation complète et un excellent DPE tirent le prix vers le haut de la fourchette du secteur, mais ne compensent JAMAIS l'absence de parking/stationnement privatif ou d'espace extérieur (jardin, terrasse, balcon) : ce sont des critères de recherche déterminants pour l'acheteur, indépendants de l'état du bien.
-- Si le contexte indique "Pas de parking / stationnement privatif : OUI" ET "Pas d'espace extérieur : OUI" (les deux absents) : applique une décote de 10 à 15% sur le prix au m² visé par rapport à ce que l'état du bien seul justifierait, même refait à neuf.
-- Si un seul des deux critères est absent : décote plus mesurée de 3 à 7%, à moduler selon le secteur (un centre-ville dense pénalise moins l'absence de parking qu'une zone pavillonnaire).
-- Si les deux critères ne sont pas signalés comme absents dans le contexte : n'applique aucune décote sur ce point (l'absence de photo d'extérieur ou de parking n'est PAS une preuve d'absence — ne décote jamais sur une simple supposition).
-- Dans tous les cas où une décote est appliquée, justifie-la explicitement en une phrase dans "Prix de revente estimé" (ex : "Estimation ajustée à la baisse (-12%) par rapport au prix médian du secteur, en raison de l'absence de stationnement privatif et d'espace extérieur — deux critères déterminants pour la revente").
+DÉCOTE / SURCOTE SUR LE PRIX DE REVENTE (RÈGLE OBLIGATOIRE, À APPLIQUER PAR LOT) :
+Pour chaque lot, regarde sa ligne "État actuel (avant travaux)" dans la section DÉCOUPAGE PAR LOT ci-dessous.
+- Une rénovation complète et un excellent DPE tirent le prix vers le haut de la fourchette du secteur, mais ne compensent JAMAIS l'absence de parking/stationnement privatif ou d'espace extérieur (jardin, terrasse, balcon, véranda) : ce sont des critères de recherche déterminants pour l'acheteur, indépendants de l'état du bien.
+- Si la liste "État actuel" de ce lot ne contient NI "Parking privatif" NI aucun de "Jardin", "Terrasse", "Balcon", "Véranda / Extension" (les deux absents) : applique une décote de 10 à 15% sur le prix au m² visé pour CE lot par rapport à ce que l'état du bien seul justifierait, même refait à neuf.
+- Si un seul des deux types de critère est absent pour ce lot (parking OU espace extérieur, pas les deux) : décote plus mesurée de 3 à 7%, à moduler selon le secteur (un centre-ville dense pénalise moins l'absence de parking qu'une zone pavillonnaire).
+- Si les deux types de critère sont présents dans la liste "État actuel" de ce lot : n'applique aucune décote sur ce point.
+- Si un lot est un "Terrain" pur (pas de bâti), cette règle ne s'applique pas.
+- Dans tous les cas où une décote est appliquée à un lot, justifie-la explicitement en une phrase dans le tableau "Détail par lot" (ex : "Estimation ajustée à la baisse (-12%) par rapport au prix médian du secteur, en raison de l'absence de stationnement privatif et d'espace extérieur — deux critères déterminants pour la revente").
 
 CRÉATION DE VALEUR PAR LOT :
-Le contexte contient une section "DÉCOUPAGE PAR LOT" détaillant, pour chaque lot : sa surface, s'il s'agit d'un terrain à détacher, le prix de revente visé par l'utilisateur, et sa "création de valeur prévue" (nouveautés par rapport à l'état actuel décrit plus haut). Pour CHAQUE lot qui a des nouveautés prévues, tu DOIS : 1) chiffrer le coût de réalisation de chacune dans le détail travaux de ce lot, 2) chiffrer la plus-value qu'elle apporte au prix de revente de CE lot (comparé à un bien sans ces ajouts), 3) mentionner ces leviers dans "Potentiel" et dans "Recommandation finale".
+Le contexte contient une section "DÉCOUPAGE PAR LOT" détaillant, pour chaque lot final (après division éventuelle) : son nom, sa surface, sa nature (Maison/Appartement/Terrain/Maison + Terrain), son "État actuel" (avant travaux), l'opération ou les opérations prévues (rénovation, division, location, démolition-reconstruction — plusieurs possibles en même temps), sa "création de valeur prévue" (nouveautés par rapport à l'état actuel de ce lot), et le prix de revente visé par l'utilisateur. Pour CHAQUE lot qui a des nouveautés prévues, tu DOIS : 1) chiffrer le coût de réalisation de chacune dans le détail travaux de ce lot, 2) chiffrer la plus-value qu'elle apporte au prix de revente de CE lot (comparé à un bien sans ces ajouts), 3) mentionner ces leviers dans "Potentiel" et dans "Recommandation finale". Si un lot indique l'opération "Démolition-reconstruction", n'applique pas les tarifs de rénovation standards mais un chiffrage de construction neuve pour ce lot.
 
 DOCUMENTS COMPLÉMENTAIRES (si fournis) : les documents ne sont pas étiquetés par type, identifie toi-même la nature de chacun d'après son contenu (DPE, DPE Global, rapport d'assainissement/SPANC, DTG, EDD). Un DTG signale les travaux de copropriété votés/à prévoir (charge à intégrer au tableau financier si le lot y est soumis) ; une EDD précise les tantièmes de copropriété (à mentionner si pertinent pour la stratégie de division) ; un DPE Global concerne l'immeuble entier (à distinguer du DPE du lot) ; un ou plusieurs devis d'artisans donnent un chiffrage réel — compare-le à ton estimation et signale les écarts significatifs. Chaque document/devis précise pour quel lot il a été fourni (ou s'il est commun à tous les lots) — utilise cette information pour rattacher tes constats au bon lot.
 
@@ -2473,11 +2475,11 @@ DOCUMENTS COMPLÉMENTAIRES (si fournis) : les documents ne sont pas étiquetés 
 
 ### Détail par lot
 
-| Lot | Surface | Type | Création de valeur | Coût travaux lot | Prix de revente visé/estimé |
-|---|---|---|---|---|---|
-| [Ex : Lot 1] | XX m² | [Terrain à détacher / Bâti] | [nouveautés prévues ou "—"] | XX € | XX € |
+| Lot | Surface | Nature | Opération(s) | Création de valeur | Coût travaux lot | Prix de revente visé/estimé |
+|---|---|---|---|---|---|---|
+| [Nom du lot] | XX m² | [Maison / Appartement / Terrain / Maison + Terrain] | [ex : Rénovation, Location longue durée] | [nouveautés prévues ou "—"] | XX € | XX € |
 
-[Une ligne par lot présent dans "DÉCOUPAGE PAR LOT". Si l'utilisateur a fourni un prix de revente visé pour un lot, pars de ce chiffre et commente sa cohérence avec le marché (DVF) plutôt que de le recalculer ; sinon, estime-le toi-même.]
+[Une ligne par lot présent dans "DÉCOUPAGE PAR LOT" (ce sont les lots finaux, après division éventuelle). Si l'utilisateur a fourni un prix de revente visé pour un lot, pars de ce chiffre et commente sa cohérence avec le marché (DVF) plutôt que de le recalculer ; sinon, estime-le toi-même.]
 
 ## Tableau financier prévisionnel
 
@@ -2962,33 +2964,43 @@ function parseCsvList(str) {
   return (str || '').split(',').map(s => s.trim()).filter(Boolean);
 }
 
-// Parse un tableau JSON d'entiers envoyé par le front (ex: mapping fichier -> numéro de lot).
+// Parse un tableau JSON envoyé par le front (ex: mapping fichier -> chemin de lot, "1-2-1").
 // Retourne [] si absent ou invalide (comportement "aucun lot connu", jamais une exception).
-function parseIntArrayJson(raw) {
+function parseJsonArray(raw) {
   try {
     const arr = JSON.parse(raw || '[]');
-    return Array.isArray(arr) ? arr.map(n => parseInt(n, 10)) : [];
+    return Array.isArray(arr) ? arr : [];
   } catch (e) {
     return [];
   }
 }
 
-// Construit le bloc de contexte "DÉCOUPAGE PAR LOT" (Marchand de Biens) à partir du tableau
-// de lots envoyé par le front (surface, terrain, création de valeur, prix de revente visé...).
+// Construit le bloc de contexte "DÉCOUPAGE PAR LOT" (Marchand de Biens) à partir des lots
+// finaux (feuilles de l'arbre existant/projet — voir buildLotsFromTree côté front) envoyés
+// par le front : nom, surface, nature, état actuel, opérations, création de valeur, revente.
 function buildLotsContextBlock(lots) {
   if (!Array.isArray(lots) || lots.length === 0) return '';
-  let bloc = `\n## DÉCOUPAGE PAR LOT (${lots.length} lot${lots.length > 1 ? 's' : ''})\n`;
-  lots.forEach(lot => {
-    bloc += `\n### Lot ${lot.index}\n`;
-    bloc += `- Surface actuelle : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
-    bloc += `- Nature du lot (avant travaux) : ${lot.type || 'non précisée'}${(lot.type === 'Terrain' || lot.type === 'Maison + Terrain') ? ' — division parcellaire à prévoir' : ''}\n`;
-    bloc += `- Prix de revente visé par l'utilisateur : ${lot.revente ? lot.revente + ' €' : 'non précisé — à estimer'}\n`;
-    if (Array.isArray(lot.plannedFeatures) && lot.plannedFeatures.length) {
-      bloc += `- Création de valeur prévue pour ce lot (chiffre le coût ET la plus-value de chacun) : ${lot.plannedFeatures.join(', ')}\n`;
+  let bloc = `\n## DÉCOUPAGE PAR LOT (${lots.length} lot${lots.length > 1 ? 's' : ''} au final, après division éventuelle)\n`;
+  lots.forEach((lot, idx) => {
+    const nom = lot.name || ('Lot ' + (idx + 1));
+    bloc += `\n### ${nom}\n`;
+    bloc += `- Surface : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
+    bloc += `- Nature : ${lot.type || 'non précisée'}\n`;
+    if (Array.isArray(lot.currentFeatures) && lot.currentFeatures.length) {
+      bloc += `- État actuel (avant travaux) : ${lot.currentFeatures.join(', ')}\n`;
+    } else {
+      bloc += `- État actuel (avant travaux) : aucune caractéristique déclarée\n`;
     }
-    if (lot.documentsNotes) bloc += `- Précisions documents (Lot ${lot.index}) : ${lot.documentsNotes}\n`;
-    if (lot.devisNotes) bloc += `- Précisions devis (Lot ${lot.index}) : ${lot.devisNotes}\n`;
-    if (lot.photosNotes) bloc += `- Précisions photos (Lot ${lot.index}) : ${lot.photosNotes}\n`;
+    if (Array.isArray(lot.operations) && lot.operations.length) {
+      bloc += `- Opération(s) prévue(s) sur ce lot : ${lot.operations.join(', ')}\n`;
+    }
+    if (Array.isArray(lot.plannedFeatures) && lot.plannedFeatures.length) {
+      bloc += `- Création de valeur prévue (chiffre le coût ET la plus-value de chacune) : ${lot.plannedFeatures.join(', ')}\n`;
+    }
+    bloc += `- Prix de revente visé par l'utilisateur : ${lot.revente ? lot.revente + ' €' : 'non précisé — à estimer'}\n`;
+    if (lot.documentsNotes) bloc += `- Précisions documents : ${lot.documentsNotes}\n`;
+    if (lot.devisNotes) bloc += `- Précisions devis : ${lot.devisNotes}\n`;
+    if (lot.photosNotes) bloc += `- Précisions photos : ${lot.photosNotes}\n`;
   });
   const totalRevente = lots.reduce((sum, l) => sum + (parseFloat(l.revente) || 0), 0);
   if (totalRevente > 0) bloc += `\nSomme des prix de revente visés (tous lots) : ${totalRevente} €\n`;
@@ -3221,7 +3233,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
 app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, uploadMarchand.fields([{ name: 'photos', maxCount: 50 }, { name: 'documents', maxCount: 60 }, { name: 'devis', maxCount: 60 }]), async (req, res) => {
   try {
-    const { surface, prix_demande, location, strategie, annee_construction, mb_societe, precisions, prix_m2_agent, travaux_estime, documents_shared, documents_notes_shared, property_features_current } = req.body;
+    const { surface, prix_demande, location, annee_construction, mb_societe, precisions, prix_m2_agent, travaux_estime, documents_shared, documents_notes_shared } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const documentsFiles = (req.files && req.files.documents) || [];
     const devisFiles = (req.files && req.files.devis) || [];
@@ -3230,12 +3242,12 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
 
     let lots = [];
     try { lots = JSON.parse(req.body.lots_json || '[]'); } catch (e) { lots = []; }
-    if (!Array.isArray(lots) || lots.length === 0) lots = [{ index: 1 }];
+    if (!Array.isArray(lots) || lots.length === 0) lots = [{ name: 'Lot 1' }];
 
     const documentsShared = documents_shared === 'true';
-    const documentsLotMap = documentsShared ? [] : parseIntArrayJson(req.body.documents_lot_map);
-    const devisLotMap = parseIntArrayJson(req.body.devis_lot_map);
-    const photosLotMap = parseIntArrayJson(req.body.photos_lot_map);
+    const documentsLotMap = documentsShared ? [] : parseJsonArray(req.body.documents_lot_map);
+    const devisLotMap = parseJsonArray(req.body.devis_lot_map);
+    const photosLotMap = parseJsonArray(req.body.photos_lot_map);
 
     const documentsNote = documentsFiles.length > 0
       ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux le DPE, un éventuel DPE Global d'immeuble, un rapport d'assainissement/SPANC, un DTG (diagnostic technique global copropriété) et/ou une EDD (état descriptif de division) d'après leur contenu. Utilise SES VALEURS RÉELLES pour le DPE repéré (classe, kWh/m²/an, GES) et chiffre le coût de rénovation énergétique pour atteindre la classe B ou C visée MB. Si un rapport d'assainissement signale une non-conformité, intègre les travaux obligatoires et leur coût dans le tableau financier MB.\n`
@@ -3247,23 +3259,13 @@ app.post('/api/analyze/marchand', aiLimiter, requireAuth, checkAnalysesQuota, up
     const nomCommune = extraireNomCommune(location);
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
-    const currentFeaturesList = parseCsvList(property_features_current);
-    const noParking = !currentFeaturesList.includes('Parking privatif');
-    const noExterieur = !currentFeaturesList.some(f => ['Jardin', 'Terrasse', 'Balcon', 'Véranda / Extension'].includes(f));
-    const decoteBloc = (noParking || noExterieur)
-      ? `\nCRITÈRES PÉNALISANTS DÉDUITS DES CARACTÉRISTIQUES DU BIEN COCHÉES PAR L'UTILISATEUR (à appliquer sur le prix de revente, voir règle DÉCOTE/SURCOTE du prompt) :\n- Pas de parking / stationnement privatif : ${noParking ? 'OUI' : 'non'}\n- Pas d'espace extérieur (jardin, terrasse, balcon) : ${noExterieur ? 'OUI' : 'non'}\n`
-      : '';
-    const currentFeaturesBloc = currentFeaturesList.length
-      ? `\n## CARACTÉRISTIQUES ACTUELLES DU BIEN (avant travaux, ensemble du bien)\n${currentFeaturesList.join(', ')}\n`
-      : '';
     const lotsContextBloc = buildLotsContextBlock(lots);
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
 Surface totale : ${surface} m²
 Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
-Stratégie : ${strategie}
-${documentsNote}${documentsNotesBlock}${decoteBloc}${currentFeaturesBloc}${lotsContextBloc}
+${documentsNote}${documentsNotesBlock}${lotsContextBloc}
 ${dvfBloc}
 IMPORTANT : Frais notaire MB = 3% du prix d'achat (article 1115 CGI)
 ${travaux_estime ? `Budget travaux estimé par l'utilisateur (indicatif, tous lots) : ${travaux_estime} €\n` : ''}Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus. Un bien intégralement rénové se situe généralement dans le haut de la fourchette du secteur, mais reste PRUDENT : ne dépasse la médiane que si l'état constaté sur les photos et le niveau de finition le justifient clairement, et donne une fourchette (prix bas prudent / prix réaliste / prix haut si tout se passe bien) plutôt qu'un chiffre unique optimiste — un marchand de biens a besoin d'une marge de sécurité réaliste sur sa revente, pas d'une estimation flatteuse qui fausserait la rentabilité de l'opération.
@@ -3273,8 +3275,8 @@ ${travaux_estime ? `Budget travaux estimé par l'utilisateur (indicatif, tous lo
     // Photos : on préfixe chaque commentaire par son lot pour que l'IA rattache chaque photo au bon lot
     const rawPhotoComments = parsePhotoComments(req.body.comments);
     const photoComments = photos.map((_, i) => {
-      const lotNum = photosLotMap[i];
-      const tag = lotNum ? `[Lot ${lotNum}] ` : '';
+      const lotPath = photosLotMap[i];
+      const tag = lotPath ? `[Lot ${lotPath}] ` : '';
       return tag + (rawPhotoComments[i] || '');
     });
 
@@ -3423,15 +3425,14 @@ app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, async (req
 
 app.post('/api/refine/marchand', aiLimiter, requireAuth, checkCredits, async (req, res) => {
   try {
-    const { previousAnalysis, instructions, surface, prix_demande, location, strategie, nb_lots, annee_construction, mb_societe } = req.body;
+    const { previousAnalysis, instructions, surface, prix_demande, location, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Société MB : ${mb_societe}
 Localisation : ${location}
 Surface : ${surface} m²
 Année construction : ${annee_construction}
 Prix demandé : ${prix_demande} €
-Stratégie : ${strategie}
-Nombre de lots envisagés : ${nb_lots}
+Nombre de lots : ${nb_lots}
 
 `;
     const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context);
