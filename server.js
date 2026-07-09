@@ -3171,14 +3171,13 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }, { name: 'dtg', maxCount: 1 }, { name: 'devis_artisan', maxCount: 5 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, assainissement_notes, dpe_ademe_data } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, documents_notes, devis_notes, dpe_ademe_data } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const dpeFiles = (req.files && req.files.dpe) || [];
-    const assainissementFiles = (req.files && req.files.assainissement) || [];
-    const dtgFiles = (req.files && req.files.dtg) || [];
-    const devisFiles = (req.files && req.files.devis_artisan) || [];
+    const documentsFiles = (req.files && req.files.documents) || [];
+    const devisFiles = (req.files && req.files.devis) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
 
@@ -3186,11 +3185,14 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
       ? `\nUn dossier de diagnostics est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — surface habitable, classe énergie, GES, assainissement — pas d'estimation.\n`
       : `\nAucun dossier de diagnostics fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le dossier peut être ajouté ultérieurement.\n`;
 
-    const assainNote = assainissementFiles.length > 0
-      ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires avec leurs coûts dans la fiche.\n`
+    const documentsNote = documentsFiles.length > 0
+      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux un rapport d'assainissement/SPANC, un DTG (diagnostic technique global copropriété), une EDD, ou tout autre diagnostic, d'après leur contenu. Si un rapport d'assainissement signale une non-conformité, intègre les travaux obligatoires et leur coût dans la fiche.\n`
       : '';
-    const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
-      ? `\nSpécifications assainissement transmises par l'agent : ${assainissement_notes.trim()}\n`
+    const documentsNotesBlock = documents_notes && documents_notes.trim()
+      ? `\nPrécisions transmises par l'agent sur les documents fournis : ${documents_notes.trim()}\n`
+      : '';
+    const devisNotesBlock = devis_notes && devis_notes.trim()
+      ? `\nPrécisions transmises par l'agent sur les devis artisans fournis : ${devis_notes.trim()}\n`
       : '';
     const pvBlock = plus_values && plus_values.trim()
       ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
@@ -3213,9 +3215,13 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
 
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${assainNote}${assainNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${documentsNote}${documentsNotesBlock}${devisNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
-    const { extraDocs, docLabels } = buildExtraDocsWithLabels({ dpeFiles, assainissementFiles, dtgFiles, devisFiles });
+    const extraDocs = [];
+    const docLabels = [];
+    dpeFiles.forEach(f => { extraDocs.push(f); docLabels.push(''); });
+    documentsFiles.forEach(f => { extraDocs.push(f); docLabels.push('Document fourni — nature à identifier toi-même (assainissement/SPANC, DTG, EDD, ou tout autre diagnostic).'); });
+    devisFiles.forEach(f => { extraDocs.push(f); docLabels.push('Devis d\'artisan fourni — chiffrage réel du marché local, à confronter à ton estimation de travaux et à commenter dans le rapport.'); });
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     if (!res.headersSent) res.json({
