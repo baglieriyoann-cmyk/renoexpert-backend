@@ -3171,28 +3171,26 @@ app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, 
   }
 });
 
-app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'dpe', maxCount: 1 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
+app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
   try {
-    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, documents_notes, devis_notes, dpe_ademe_data } = req.body;
+    const { surface, location, agence_nom, agent_nom, precisions, plus_values, prix_m2_agent, potentiel, documents_notes, devis_notes, photos_notes, dpe_ademe_data } = req.body;
     const photos = (req.files && req.files.photos) || [];
-    const dpeFiles = (req.files && req.files.dpe) || [];
     const documentsFiles = (req.files && req.files.documents) || [];
     const devisFiles = (req.files && req.files.devis) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 30) return res.status(400).json({ error: 'Maximum 30 photos autorisées pour cette analyse.' });
 
-    const dpeNote = dpeFiles.length > 0
-      ? `\nUn dossier de diagnostics est joint à cette requête (document avant les photos). Lis-le attentivement et utilise SES VALEURS RÉELLES — surface habitable, classe énergie, GES, assainissement — pas d'estimation.\n`
-      : `\nAucun dossier de diagnostics fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le dossier peut être ajouté ultérieurement.\n`;
-
     const documentsNote = documentsFiles.length > 0
-      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux un rapport d'assainissement/SPANC, un DTG (diagnostic technique global copropriété), une EDD, ou tout autre diagnostic, d'après leur contenu. Si un rapport d'assainissement signale une non-conformité, intègre les travaux obligatoires et leur coût dans la fiche.\n`
-      : '';
+      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux le DPE, un rapport d'assainissement/SPANC, un DTG (diagnostic technique global copropriété), une EDD, ou tout autre diagnostic, d'après leur contenu. Utilise SES VALEURS RÉELLES pour le DPE repéré (classe, kWh/m²/an, GES) — pas d'estimation. Si un rapport d'assainissement signale une non-conformité, intègre les travaux obligatoires et leur coût dans la fiche.\n`
+      : `\nAucun document fourni à ce stade — précise dans la fiche "(estimé)" pour les données énergie/GES et indique en notes finales que le dossier peut être ajouté ultérieurement.\n`;
     const documentsNotesBlock = documents_notes && documents_notes.trim()
       ? `\nPrécisions transmises par l'agent sur les documents fournis : ${documents_notes.trim()}\n`
       : '';
     const devisNotesBlock = devis_notes && devis_notes.trim()
       ? `\nPrécisions transmises par l'agent sur les devis artisans fournis : ${devis_notes.trim()}\n`
+      : '';
+    const photosNotesBlock = photos_notes && photos_notes.trim()
+      ? `\nPrécisions transmises par l'agent sur les photos fournies : ${photos_notes.trim()}\n`
       : '';
     const pvBlock = plus_values && plus_values.trim()
       ? `\nPlus-values cochées par l'agent (à intégrer EXPLICITEMENT dans Atouts + à chiffrer dans Prix de marché) :\n${plus_values.trim()}\n`
@@ -3203,7 +3201,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
 
     let dpeAdemeBloc = '';
     let dpeAdemeData = null;
-    if (dpeFiles.length === 0 && dpe_ademe_data) {
+    if (documentsFiles.length === 0 && dpe_ademe_data) {
       try {
         dpeAdemeData = typeof dpe_ademe_data === 'string' ? JSON.parse(dpe_ademe_data) : dpe_ademe_data;
         dpeAdemeBloc = await buildDpeContext(dpeAdemeData);
@@ -3215,25 +3213,24 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
     const dvf = await getDVFData(cp, nomCommune);
     const dvfBloc = buildDVFContext(dvf, prix_m2_agent);
 
-    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${dpeNote}${dpeAdemeBloc}${documentsNote}${documentsNotesBlock}${devisNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
+    const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n${documentsNote}${dpeAdemeBloc}${documentsNotesBlock}${devisNotesBlock}${photosNotesBlock}${pvBlock}${potentielBlock}\n${dvfBloc}\n` + precisionsBlock(precisions);
     const photoComments = parsePhotoComments(req.body.comments);
     const extraDocs = [];
     const docLabels = [];
-    dpeFiles.forEach(f => { extraDocs.push(f); docLabels.push(''); });
-    documentsFiles.forEach(f => { extraDocs.push(f); docLabels.push('Document fourni — nature à identifier toi-même (assainissement/SPANC, DTG, EDD, ou tout autre diagnostic).'); });
+    documentsFiles.forEach(f => { extraDocs.push(f); docLabels.push('Document fourni — nature à identifier toi-même (DPE, assainissement/SPANC, DTG, EDD, ou tout autre diagnostic).'); });
     devisFiles.forEach(f => { extraDocs.push(f); docLabels.push('Devis d\'artisan fourni — chiffrage réel du marché local, à confronter à ton estimation de travaux et à commenter dans le rapport.'); });
     const analysis = await analyzeWithClaude(PROMPTS.agent, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     if (!res.headersSent) res.json({
       success: true, analysis, agence_nom, agent_nom,
-      dpe_fourni: dpeFiles.length > 0,
+      dpe_fourni: documentsFiles.length > 0,
       dpe_ademe: dpeAdemeData ? { classe: dpeAdemeData.classe_energie, ajustement_pct: dpeAdemeData.ajustement_pct } : null,
       dvf_utilise: !!dvf
     });
   } catch (error) {
     console.error('Erreur agent:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
       return;
     }
     if (!res.headersSent) res.status(500).json({ error: error.message });
