@@ -2918,7 +2918,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
   try {
     message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
+      max_tokens: 16000,
       messages: [{ role: 'user', content }]
     }, { timeout: 180 * 1000 });
   } catch (err) {
@@ -3064,7 +3064,7 @@ ${systemPrompt}`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
+    max_tokens: 16000,
     messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
   });
 
