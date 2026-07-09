@@ -3093,29 +3093,28 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
   }
 });
 
-app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'dpe', maxCount: 1 }, { name: 'assainissement', maxCount: 1 }, { name: 'dtg', maxCount: 1 }, { name: 'devis_artisan', maxCount: 5 }, { name: 'dpe_global', maxCount: 1 }, { name: 'edd', maxCount: 1 }]), async (req, res) => {
+app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
   try {
-    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, assainissement_notes, property_features_current, property_features_planned } = req.body;
+    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, documents_notes, devis_notes, photos_notes, property_features_current, property_features_planned } = req.body;
     const photos = (req.files && req.files.photos) || [];
-    const dpeFiles = (req.files && req.files.dpe) || [];
-    const assainissementFiles = (req.files && req.files.assainissement) || [];
-    const dtgFiles = (req.files && req.files.dtg) || [];
-    const devisFiles = (req.files && req.files.devis_artisan) || [];
-    const dpeGlobalFiles = (req.files && req.files.dpe_global) || [];
-    const eddFiles = (req.files && req.files.edd) || [];
+    const documentsFiles = (req.files && req.files.documents) || [];
+    const devisFiles = (req.files && req.files.devis) || [];
     if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
     if (photos.length > 20) return res.status(400).json({ error: 'Maximum 20 photos autorisées pour cette analyse.' });
     const isLocatif = visite_type === 'locatif';
-    const dpeNote = dpeFiles.length > 0
-      ? `\nUn dossier de diagnostics est joint (document avant les photos). Utilise SES VALEURS RÉELLES (surface habitable, classe énergie, GES, assainissement).\n`
-      : `\nAucun dossier de diagnostics fourni — estime la classe probable à partir des photos et de l'année de construction visible.\n`;
-    const assainNote = assainissementFiles.length > 0
-      ? `\nUn rapport d'assainissement est joint (document). Lis-le, identifie les non-conformités et intègre les travaux obligatoires avec leurs coûts dans la section travaux urgents.\n`
+    const documentsNote = documentsFiles.length > 0
+      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux le DPE, un éventuel DPE Global d'immeuble, un rapport d'assainissement/SPANC, un DTG, une EDD, ou tout autre diagnostic, d'après leur contenu. Utilise SES VALEURS RÉELLES pour le DPE repéré (classe, kWh/m²/an, GES) — pas d'estimation. Si un rapport d'assainissement signale une non-conformité, intègre les travaux obligatoires avec leurs coûts dans la section travaux urgents.\n`
+      : `\nAucun document fourni — estime la classe énergétique probable à partir des photos et de l'année de construction visible.\n`;
+    const documentsNotesBlock = documents_notes && documents_notes.trim()
+      ? `\nPrécisions transmises par le client sur les documents fournis : ${documents_notes.trim()}\n`
       : '';
-    const assainNotesBlock = assainissement_notes && assainissement_notes.trim()
-      ? `\nSpécifications assainissement transmises par le client : ${assainissement_notes.trim()}\n`
+    const devisNotesBlock = devis_notes && devis_notes.trim()
+      ? `\nPrécisions transmises par le client sur les devis artisans fournis : ${devis_notes.trim()}\n`
       : '';
-    let context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n${dpeNote}${assainNote}${assainNotesBlock}`;
+    const photosNotesBlock = photos_notes && photos_notes.trim()
+      ? `\nPrécisions transmises par le client sur les photos fournies : ${photos_notes.trim()}\n`
+      : '';
+    let context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n${documentsNote}${documentsNotesBlock}${devisNotesBlock}${photosNotesBlock}`;
     if (isLocatif) {
       context += prix_achat ? `Prix d'achat envisagé : ${prix_achat} €\n` : '';
       context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
@@ -3128,11 +3127,10 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     context += '\n' + precisionsBlock(precisions);
     const prompt = isLocatif ? PROMPTS.visite_locatif : PROMPTS.visite;
     const photoComments = parsePhotoComments(req.body.comments);
-    const { extraDocs, docLabels } = buildExtraDocsWithLabels({
-      dpeFiles, assainissementFiles, dtgFiles, devisFiles,
-      dpeGlobalFiles: isLocatif ? dpeGlobalFiles : [],
-      eddFiles: isLocatif ? eddFiles : []
-    });
+    const extraDocs = [];
+    const docLabels = [];
+    documentsFiles.forEach(f => { extraDocs.push(f); docLabels.push('Document fourni — nature à identifier toi-même (DPE, DPE Global, assainissement/SPANC, DTG, EDD, ou tout autre diagnostic).'); });
+    devisFiles.forEach(f => { extraDocs.push(f); docLabels.push('Devis d\'artisan fourni — chiffrage réel du marché local, à confronter à ton estimation de travaux et à commenter dans le rapport.'); });
     const analysis = await analyzeWithClaude(prompt, photos, context, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     if (!res.headersSent) res.json({ success: true, analysis });
@@ -3140,7 +3138,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     console.error('Erreur visite:', error);
 
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      if (!res.headersSent) return res.status(413).json({ error: 'Le fichier DPE est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans DPE et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
       return;
     }
 
