@@ -1465,7 +1465,8 @@ app.put('/api/biens/:id', requireAuth, async (req, res) => {
   try {
     const { adresse, type_bien, surface, nb_niveaux, date_visite, notes, rapport_complet, fourchette_basse, fourchette_haute, dpe_classe, nb_pieces, nb_chambres, annee_construction, surface_terrain, etat_bien, ville, code_postal } = req.body;
     const r = await pool.query(
-      `UPDATE biens SET adresse=$1, type_bien=$2, surface=$3, nb_niveaux=$4, date_visite=$5, notes=$6,
+      `UPDATE biens SET adresse=COALESCE($1, adresse), type_bien=COALESCE($2, type_bien), surface=COALESCE($3, surface),
+       nb_niveaux=COALESCE($4, nb_niveaux), date_visite=COALESCE($5, date_visite), notes=COALESCE($6, notes),
        rapport_complet=COALESCE($7, rapport_complet), fourchette_basse=COALESCE($8, fourchette_basse),
        fourchette_haute=COALESCE($9, fourchette_haute), dpe_classe=COALESCE($10, dpe_classe),
        nb_pieces=COALESCE($11, nb_pieces), nb_chambres=COALESCE($12, nb_chambres),
