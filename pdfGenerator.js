@@ -303,9 +303,68 @@ function drawLevelBadge(doc, level) {
   doc.y += 36;
 }
 
+// Présentation "carte" (label/valeur empilés) — utilisée quand un tableau a trop de colonnes
+// pour tenir en largeur de page (au-delà, drawDataTable produirait des colonnes trop étroites,
+// avec un texte qui retombe caractère par caractère).
+function drawCardTable(doc, headers, rows) {
+  const padX = 14;
+  const padY = 10;
+  const bottomMargin = 60;
+  const labelWidth = Math.min(160, LAYOUT.contentWidth * 0.32);
+  const valueWidth = LAYOUT.contentWidth - (padX * 2) - labelWidth;
+
+  const isTotalRow = (row) => {
+    const firstCell = (row[0] || '').toLowerCase();
+    return firstCell.includes('total') || firstCell.includes('**');
+  };
+
+  rows.forEach((row, rowIdx) => {
+    const isTotal = isTotalRow(row);
+    const cells = row.map((cell, i) => ({
+      label: emojiToText(headers[i] || '').replace(/\*\*/g, '').toUpperCase(),
+      value: emojiToText((cell || '').toString()).replace(/\*\*/g, '')
+    }));
+
+    doc.fontSize(9.5).font('Helvetica');
+    const lineHeights = cells.map(c => Math.max(
+      doc.heightOfString(c.value, { width: valueWidth }),
+      12
+    ));
+    const cardHeight = lineHeights.reduce((sum, h) => sum + h + 6, 0) + (padY * 2);
+
+    ensureSpace(doc, cardHeight + 20);
+    const startY = doc.y;
+
+    doc.rect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight)
+       .fill(rowIdx % 2 === 0 ? COLORS.bgPaper : COLORS.bg);
+    if (isTotal) {
+      doc.moveTo(LAYOUT.margin, startY).lineTo(LAYOUT.margin + LAYOUT.contentWidth, startY)
+         .lineWidth(0.6).strokeColor(COLORS.gold).stroke();
+    }
+
+    let cy = startY + padY;
+    cells.forEach((c, i) => {
+      doc.fillColor(COLORS.textMuted || COLORS.textPrimary).fontSize(8.5).font('Helvetica-Bold')
+         .text(c.label, LAYOUT.margin + padX, cy, { width: labelWidth });
+      doc.fillColor(isTotal ? COLORS.navy : COLORS.textPrimary).fontSize(9.5)
+         .font(isTotal ? 'Helvetica-Bold' : 'Helvetica')
+         .text(c.value, LAYOUT.margin + padX + labelWidth, cy, { width: valueWidth });
+      cy += lineHeights[i] + 6;
+    });
+
+    doc.rect(LAYOUT.margin, startY, LAYOUT.contentWidth, cardHeight)
+       .lineWidth(0.4).strokeColor(COLORS.navy).stroke();
+
+    doc.y = startY + cardHeight + 10;
+  });
+
+  doc.y += 8;
+}
+
 // Tableau classique pour données - VERSION AMÉLIORÉE PLUS VISUELLE
 function drawDataTable(doc, headers, rows) {
   const colCount = headers.length;
+  if (colCount > 5) return drawCardTable(doc, headers, rows);
   const colWidth = LAYOUT.contentWidth / colCount;
   const headerHeight = 38;
   const bottomMargin = 60;
