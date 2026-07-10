@@ -2500,8 +2500,6 @@ DOCUMENTS COMPLÉMENTAIRES (si fournis) : les documents ne sont pas étiquetés 
 
 ### Marge
 - Marge brute : XX €
-- IS (25%) : XX €
-- Marge nette : XX €
 - Rentabilité : XX%
 
 ## Calendrier
@@ -3654,6 +3652,33 @@ app.patch('/api/projets/:id', requireAuth, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Projet non trouvé' });
     res.json({ success: true, projet: result.rows[0] });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/projets/:id', requireAuth, async (req, res) => {
+  try {
+    let { titre, analysis, data } = req.body;
+
+    if (!analysis) {
+      return res.status(400).json({ error: 'Données manquantes' });
+    }
+
+    if (data && Array.isArray(data.photos) && data.photos.length > 0) {
+      data.photos = await Promise.all(data.photos.map(compressPhotoBase64));
+    }
+
+    const result = await pool.query(
+      `UPDATE projets SET titre = $1, analysis = $2, data = $3, updated_at = NOW()
+       WHERE id = $4 AND user_email = $5 RETURNING id`,
+      [titre || null, analysis, JSON.stringify(data || {}), req.params.id, req.user.email]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Projet non trouvé' });
+
+    res.json({ success: true, projet_id: result.rows[0].id });
+  } catch (error) {
+    console.error('Erreur update projet:', error);
     res.status(500).json({ error: error.message });
   }
 });
