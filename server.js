@@ -2212,6 +2212,17 @@ Procédure de reconstitution (réparation localisée, pas une ossature complète
 5. Seulement ensuite : enduisage des bandes/jonctions, ponçage, peinture.
 Chiffrage : ajouter le panneau de doublage (placo + isolant) et le MAP ; ne pas prévoir de grosses quantités d'enduit de rebouchage pour combler la profondeur manquante — l'enduit ne sert qu'aux jonctions et à la finition, jamais au comblement d'une réservation de plusieurs centimètres.
 
+▼ SI ÉBRASEMENT DE VELUX À FINIR/REPRENDRE (finition d'un puits de lumière en rampant, mentionner seulement si pertinent)
+- IDENTIFICATION MATIÈRE (piège fréquent) : sur la tranche d'un doublage placo découpé autour d'un Velux, une matière blanche en granulés/billes n'est PAS de la mousse polyuréthane expansive — c'est du polystyrène expansé (PSE), partie intégrante d'un complexe de doublage préfabriqué (placo + polystyrène). Regarder aussi si des chevrons (bois) sont visibles en fond de feuillure : c'est le signe d'un ébrasement à reconstituer, pas d'une simple finition de calfeutrement.
+Procédure (dans l'ordre) :
+1. Recoupe du complexe placo/polystyrène existant pour l'aligner avec les bords du Velux (zone d'emboîtement) ; ouvrir/évaser les angles en haut et sur les côtés pour maximiser l'apport de lumière.
+2. Fixer des fourrures métalliques directement sur le complexe placo/polystyrène existant pour créer le support du nouvel habillage.
+3. Habillage en placo hydrofuge (BA13 vert) : découper et poser 4 morceaux dans cet ordre — bas, haut, puis côtés (gauche/droite) — en les emboîtant dans la rainure du Velux et en les vissant sur les fourrures.
+4. Rebouchage au MAP des espaces vides entre l'ancien complexe et le nouvel habillage, arêtes dressées proprement avant la pose des bandes.
+5. Jointoiement : bandes armées sur les arêtes saillantes (extérieures), bandes d'angle standards dans les angles rentrants (intérieurs), puis 2e et 3e passes d'enduit.
+6. Finitions : ponçage soigné, sous-couche (primaire d'accrochage), 2 couches de peinture acrylique de finition.
+7. Étanchéité finale : joint acrylique soigné entre le placo et le cadre bois du Velux pour prévenir les fissures liées aux mouvements de charpente.
+
 ═══════════════════════════════════════════
 FORMAT DE RÉPONSE — adapte la profondeur à l'ampleur
 ═══════════════════════════════════════════
