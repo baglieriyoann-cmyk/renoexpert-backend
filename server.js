@@ -286,6 +286,7 @@ async function initDB() {
     `);
     
     await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS bien_id INTEGER`);
+    await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES projets(id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_projets_user ON projets(user_id, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_token)`);
@@ -1756,6 +1757,17 @@ Si un dossier de diagnostics est joint à la requête, lis-le et intègre SES VA
 
 **Budget travaux total estimé : XX 000 € à XX 000 €**
 
+## Prix d'achat à proposer 💰
+[SECTION OBLIGATOIRE — c'est la conclusion la plus utile du rapport pour l'acheteur. Pars du prix demandé par le vendeur si connu (sinon du prix de marché du secteur) et déduis un raisonnement chiffré intégrant le budget travaux. Présente TOUJOURS un tableau à 3 lignes :
+
+| Scénario | Prix à proposer | Argument de négociation |
+|---|---|---|
+| Offre prudente | XX € | [levier principal : travaux, DPE, délai, etc.] |
+| Offre réaliste (recommandée) | XX € | [argument] |
+| Offre plafond (si coup de cœur) | XX € | [argument] |
+
+Sous le tableau, une phrase de synthèse : "Au regard des travaux à prévoir (XX 000 €), une offre à XX € reste cohérente avec le marché local."]
+
 ## Questions à poser au vendeur ❓
 - [Liste de 5-8 questions ciblées]
 
@@ -1845,6 +1857,17 @@ Régime demandé : [régime fourni par l'utilisateur]
 | Mensualité crédit (3,5% sur 20 ans — 100% financé) | -XX € |
 | Charges mensualisées propriétaire | -XX € |
 | **Cash-flow net mensuel** | **XX €** |
+
+## Prix d'achat à proposer selon la marge visée 💰
+[SECTION OBLIGATOIRE — c'est la conclusion la plus utile du rapport pour l'investisseur. À partir du prix demandé (si connu, sinon du prix de marché du secteur) et du budget travaux déjà chiffré, construis un tableau à 3 lignes reliant chaque niveau de prix d'achat à son impact sur le rendement, pour que l'investisseur sache directement quelle offre proposer :
+
+| Scénario | Prix d'achat proposé | Investissement total (achat + notaire + travaux) | Rendement net résultant |
+|---|---|---|---|
+| Offre prudente | XX € | XX € | XX% |
+| Offre réaliste (recommandée) | XX € | XX € | XX% |
+| Offre plafond (si rendement encore acceptable) | XX € | XX € | XX% |
+
+Sous le tableau : une phrase de synthèse indiquant le prix maximum à ne pas dépasser pour conserver un rendement net cible (ex : "Au-delà de XX €, le rendement net descend sous 4% — à éviter.").]
 
 ## Risques et points d'attention
 - [Risques techniques : vétusté, humidité, toiture, etc.]
@@ -2512,6 +2535,17 @@ DOCUMENTS COMPLÉMENTAIRES (si fournis) : les documents ne sont pas étiquetés 
 ### Marge
 - Marge brute : XX €
 - Rentabilité : XX%
+
+## Prix d'achat à proposer selon la marge visée 💰
+[SECTION OBLIGATOIRE — c'est la conclusion la plus utile du rapport pour l'opération MB. Reprends le prix demandé (ou le prix estimé si non fourni) et construis un tableau reliant chaque prix d'achat possible à la marge brute et à la rentabilité qui en résultent, pour permettre de choisir directement l'offre à proposer :
+
+| Scénario | Prix d'achat proposé | Marge brute résultante | Rentabilité |
+|---|---|---|---|
+| Offre prudente (marge sécurisée) | XX € | XX € | XX% |
+| Offre réaliste (recommandée) | XX € | XX € | XX% |
+| Offre plafond (marge minimale acceptable) | XX € | XX € | XX% |
+
+Sous le tableau : une phrase de synthèse donnant le prix d'achat maximum au-delà duquel l'opération ne dégage plus une marge suffisante pour couvrir le risque (ex : "Au-delà de XX €, la marge brute descend sous XX € — opération à ne pas engager.").]
 
 ## Calendrier
 - Acquisition : Mois 1
@@ -3530,7 +3564,7 @@ async function compressPhotoBase64(photo) {
 
 app.post('/api/projets/save', requireAuth, async (req, res) => {
   try {
-    let { mode, titre, analysis, data, bien_id } = req.body;
+    let { mode, titre, analysis, data, bien_id, parent_id } = req.body;
 
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
@@ -3551,14 +3585,27 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 
     const bienIdVal = bien_id ? parseInt(bien_id) : null;
 
+    // Un dossier reste plat à 1 niveau : si le parent fourni a lui-même un parent, on rattache au grand-parent (la racine).
+    let parentIdVal = null;
+    if (parent_id) {
+      const parentCheck = await pool.query(
+        'SELECT id, parent_id FROM projets WHERE id = $1 AND user_email = $2',
+        [parseInt(parent_id), req.user.email]
+      );
+      if (parentCheck.rows.length > 0) {
+        const parentRow = parentCheck.rows[0];
+        parentIdVal = parentRow.parent_id || parentRow.id;
+      }
+    }
+
     if (data && Array.isArray(data.photos) && data.photos.length > 0) {
       data.photos = await Promise.all(data.photos.map(compressPhotoBase64));
     }
 
     const result = await pool.query(
-      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {}), bienIdVal]
+      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id, parent_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {}), bienIdVal, parentIdVal]
     );
     
     const countResult = await pool.query(
@@ -3586,7 +3633,7 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 app.get('/api/projets/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, mode, titre, analysis, data, created_at, bien_id
+      `SELECT id, mode, titre, analysis, data, created_at, bien_id, parent_id
        FROM projets
        WHERE user_email = $1
        ORDER BY created_at DESC
@@ -3600,6 +3647,7 @@ app.get('/api/projets/list', requireAuth, async (req, res) => {
       titre: p.titre,
       created_at: p.created_at,
       bien_id: p.bien_id || null,
+      parent_id: p.parent_id ? p.parent_id.toString() : null,
       location: (p.data && p.data.location) || '',
       surface: (p.data && p.data.surface) || '',
       visite_type: (p.data && p.data.visite_type) || null,
