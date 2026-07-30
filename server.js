@@ -3031,6 +3031,7 @@ function buildLotsContextBlock(lots) {
     bloc += `- Surface${lot.m2Jardin ? ' habitable' : ''} : ${lot.m2 ? lot.m2 + ' m²' : 'non précisée'}\n`;
     if (lot.m2Jardin) bloc += `- Surface de jardin : ${lot.m2Jardin} m²\n`;
     bloc += `- Nature : ${lot.type || 'non précisée'}${lot.terrainSubtype ? ' — ' + lot.terrainSubtype : ''}\n`;
+    if (lot.etage) bloc += `- Étage : ${lot.etage}\n`;
     if (Array.isArray(lot.currentFeatures) && lot.currentFeatures.length) {
       bloc += `- État actuel (avant travaux) : ${lot.currentFeatures.join(', ')}\n`;
     } else {
