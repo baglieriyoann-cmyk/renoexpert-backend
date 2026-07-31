@@ -187,8 +187,6 @@ const CREDIT_COSTS = {
 const CREDITS_BETA = 10;
 // Limite d'analyses affichée dans le dashboard admin (historique, avant système crédits)
 const LIMITE_ANALYSES_GRATUIT = 10;
-// Nombre max de projets sauvegardés pour les utilisateurs non-illimités
-const MAX_PROJETS_GRATUIT = 10;
 // Admin : crédits illimités (plan 'illimite')
 
 // ============================================================
@@ -2910,8 +2908,27 @@ async function resizePhotoForApi(buffer) {
   }
 }
 
-function fileToContent(file, resizedBuffer) {
+const FILES_API_BETA = 'files-api-2025-04-14';
+// Au-delà de ce poids, le base64 inline dans la requête risque de dépasser la limite de taille
+// acceptée par l'API Claude (~8 Mo tous documents/photos confondus). On passe alors par l'API
+// Files d'Anthropic : le PDF est uploadé une fois (jusqu'à 32 Mo) puis référencé par file_id,
+// ce qui ne pèse presque rien dans le corps de la requête d'analyse.
+const PDF_INLINE_THRESHOLD = 4 * 1024 * 1024;
+
+async function uploadPdfToAnthropic(file) {
+  const uploaded = await anthropic.beta.files.upload({
+    file: await Anthropic.toFile(file.buffer, file.originalname || 'document.pdf', { type: 'application/pdf' }),
+    betas: [FILES_API_BETA]
+  });
+  return uploaded.id;
+}
+
+async function fileToContent(file, resizedBuffer) {
   if (file.mimetype === 'application/pdf') {
+    if (file.buffer.length > PDF_INLINE_THRESHOLD) {
+      const fileId = await uploadPdfToAnthropic(file);
+      return { type: 'document', source: { type: 'file', file_id: fileId } };
+    }
     return {
       type: 'document',
       source: { type: 'base64', media_type: 'application/pdf', data: file.buffer.toString('base64') }
@@ -2927,10 +2944,10 @@ function fileToContent(file, resizedBuffer) {
 async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = [], docLabels = []) {
   const content = [];
   if (additionalContext) content.push({ type: 'text', text: additionalContext });
-  extraDocs.forEach((doc, i) => {
+  for (let i = 0; i < extraDocs.length; i++) {
     if (docLabels[i]) content.push({ type: 'text', text: docLabels[i] });
-    content.push(fileToContent(doc));
-  });
+    content.push(await fileToContent(extraDocs[i]));
+  }
 
   const hasAnyComment = Array.isArray(photoComments) && photoComments.some(c => c && c.trim());
 
@@ -2947,23 +2964,25 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
     photos.map(p => p.mimetype && p.mimetype !== 'application/pdf' ? resizePhotoForApi(p.buffer) : Promise.resolve(null))
   );
 
-  photos.forEach((photo, i) => {
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
     const c = (photoComments && photoComments[i] ? String(photoComments[i]).trim() : '');
     const label = c
       ? `Photo ${i + 1} — Annotation utilisateur : « ${c} »`
       : `Photo ${i + 1}`;
     content.push({ type: 'text', text: label });
-    content.push(fileToContent(photo, resizedBuffers[i]));
-  });
+    content.push(await fileToContent(photo, resizedBuffers[i]));
+  }
 
   content.push({ type: 'text', text: prompt });
 
   let message;
   try {
-    message = await anthropic.messages.create({
+    message = await anthropic.beta.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
-      messages: [{ role: 'user', content }]
+      messages: [{ role: 'user', content }],
+      betas: [FILES_API_BETA]
     }, { timeout: 180 * 1000 });
   } catch (err) {
     // Enrichir le message d'erreur pour faciliter le diagnostic
@@ -3182,7 +3201,7 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     console.error('Erreur visite:', error);
 
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite 32 Mo par fichier). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
       return;
     }
 
@@ -3273,7 +3292,7 @@ app.post('/api/analyze/agent', aiLimiter, requireAuth, checkAnalysesQuota, uploa
   } catch (error) {
     console.error('Erreur agent:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite 32 Mo par fichier). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
       return;
     }
     if (!res.headersSent) res.status(500).json({ error: error.message });
@@ -3356,7 +3375,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus.
   } catch (error) {
     console.error('Erreur marchand:', error);
     if (error.status === 413 || (error.message && error.message.includes('request_too_large'))) {
-      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite ~8 Mo). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
+      if (!res.headersSent) return res.status(413).json({ error: 'Un document est trop volumineux (limite 32 Mo par fichier). Compressez-le et réessayez, ou lancez l\'analyse sans ce fichier et ajoutez-le ensuite.' });
       return;
     }
     if (!res.headersSent) res.status(500).json({ error: error.message });
@@ -3569,19 +3588,6 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
-    }
-
-    if (req.user.plan !== 'illimite') {
-      const countCheck = await pool.query(
-        'SELECT COUNT(*) FROM projets WHERE user_email = $1',
-        [req.user.email]
-      );
-      if (parseInt(countCheck.rows[0].count) >= MAX_PROJETS_GRATUIT) {
-        return res.status(403).json({
-          error: `Limite de ${MAX_PROJETS_GRATUIT} projets sauvegardés atteinte. Supprimez un projet existant pour en créer un nouveau.`,
-          code: 'PROJ_QUOTA_EXCEEDED'
-        });
-      }
     }
 
     const bienIdVal = bien_id ? parseInt(bien_id) : null;
