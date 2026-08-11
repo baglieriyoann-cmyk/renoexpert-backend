@@ -3064,6 +3064,7 @@ function buildLotsContextBlock(lots) {
     }
     if (lot.precisions) bloc += `- Précisions sur ce lot : ${lot.precisions}\n`;
     bloc += `- Budget travaux estimé par l'utilisateur pour ce lot : ${lot.travaux ? lot.travaux + ' €' : 'non précisé — à estimer'}\n`;
+    if (lot.travauxDesc) bloc += `- Détail des coûts de travaux donné par l'utilisateur pour ce lot : ${lot.travauxDesc}\n`;
     bloc += `- Prix de revente visé par l'utilisateur : ${lot.revente ? lot.revente + ' €' : 'non précisé — à estimer'}\n`;
     if (lot.documentsNotes) bloc += `- Précisions documents : ${lot.documentsNotes}\n`;
     if (lot.devisNotes) bloc += `- Précisions devis : ${lot.devisNotes}\n`;
