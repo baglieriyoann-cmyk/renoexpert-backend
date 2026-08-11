@@ -3349,7 +3349,7 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus.
     const rawPhotoComments = parsePhotoComments(req.body.comments);
     const photoComments = photos.map((_, i) => {
       const lotPath = photosLotMap[i];
-      const tag = lotPath ? `[Lot ${lotPath}] ` : '';
+      const tag = lotPath === 'ALL' ? '[Tous les lots] ' : (lotPath ? `[Lot ${lotPath}] ` : '');
       return tag + (rawPhotoComments[i] || '');
     });
 
