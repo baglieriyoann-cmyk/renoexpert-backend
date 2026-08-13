@@ -285,6 +285,7 @@ async function initDB() {
     
     await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS bien_id INTEGER`);
     await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES projets(id)`);
+    await pool.query(`ALTER TABLE projets ADD COLUMN IF NOT EXISTS instructions TEXT`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_projets_user ON projets(user_id, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_token)`);
@@ -3583,9 +3584,36 @@ async function compressPhotoBase64(photo) {
   }
 }
 
+// Génère un titre court et lisible via Claude à partir du contexte du dossier.
+// Utilisé quand le client ne fournit pas de titre définitif (cas normal) — repli sur titre_fallback si erreur/timeout.
+async function genererTitreIA({ mode, instructions, contextResume, analysisExcerpt }) {
+  const prompt = `Résume en un titre court (5-8 mots, sans guillemets, sans point final) ce dossier immobilier.
+Type d'analyse : ${mode}
+${contextResume ? 'Contexte : ' + contextResume : ''}
+${instructions ? "Consignes d'affinement demandées : " + instructions : ''}
+Extrait du rapport : ${(analysisExcerpt || '').slice(0, 400)}
+
+Réponds uniquement avec le titre, rien d'autre.`;
+  const resp = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 40,
+    messages: [{ role: 'user', content: prompt }]
+  });
+  const titre = (resp.content[0].text || '').trim().replace(/^["'«]+|["'»]+$/g, '').replace(/\.$/, '');
+  if (!titre) throw new Error('Titre vide');
+  return titre.slice(0, 80);
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+  ]);
+}
+
 app.post('/api/projets/save', requireAuth, async (req, res) => {
   try {
-    let { mode, titre, analysis, data, bien_id, parent_id } = req.body;
+    let { mode, titre, titre_fallback, instructions, analysis, data, bien_id, parent_id } = req.body;
 
     if (!mode || !analysis) {
       return res.status(400).json({ error: 'Données manquantes' });
@@ -3593,27 +3621,37 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 
     const bienIdVal = bien_id ? parseInt(bien_id) : null;
 
-    // Un dossier reste plat à 1 niveau : si le parent fourni a lui-même un parent, on rattache au grand-parent (la racine).
+    // parent_id pointe désormais toujours vers le parent direct (arbre réel, pas d'aplatissement).
     let parentIdVal = null;
     if (parent_id) {
       const parentCheck = await pool.query(
-        'SELECT id, parent_id FROM projets WHERE id = $1 AND user_email = $2',
+        'SELECT id FROM projets WHERE id = $1 AND user_email = $2',
         [parseInt(parent_id), req.user.email]
       );
-      if (parentCheck.rows.length > 0) {
-        const parentRow = parentCheck.rows[0];
-        parentIdVal = parentRow.parent_id || parentRow.id;
-      }
+      if (parentCheck.rows.length > 0) parentIdVal = parentCheck.rows[0].id;
     }
 
     if (data && Array.isArray(data.photos) && data.photos.length > 0) {
       data.photos = await Promise.all(data.photos.map(compressPhotoBase64));
     }
 
+    let titreFinal = (titre || '').trim();
+    if (!titreFinal) {
+      try {
+        const contextResume = (data && (data.location || data.description)) || '';
+        titreFinal = await withTimeout(
+          genererTitreIA({ mode, instructions, contextResume, analysisExcerpt: analysis }),
+          4000
+        );
+      } catch (e) {
+        titreFinal = (titre_fallback || '').trim() || `Projet ${mode}`;
+      }
+    }
+
     const result = await pool.query(
-      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id, parent_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [req.user.email, req.user.email, mode, titre || `Projet ${mode}`, analysis, JSON.stringify(data || {}), bienIdVal, parentIdVal]
+      `INSERT INTO projets (user_id, user_email, mode, titre, analysis, data, bien_id, parent_id, instructions)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [req.user.email, req.user.email, mode, titreFinal, analysis, JSON.stringify(data || {}), bienIdVal, parentIdVal, instructions || null]
     );
     
     const countResult = await pool.query(
@@ -3641,7 +3679,7 @@ app.post('/api/projets/save', requireAuth, async (req, res) => {
 app.get('/api/projets/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, mode, titre, analysis, data, created_at, bien_id, parent_id
+      `SELECT id, mode, titre, analysis, data, created_at, bien_id, parent_id, instructions
        FROM projets
        WHERE user_email = $1
        ORDER BY created_at DESC
@@ -3656,6 +3694,7 @@ app.get('/api/projets/list', requireAuth, async (req, res) => {
       created_at: p.created_at,
       bien_id: p.bien_id || null,
       parent_id: p.parent_id ? p.parent_id.toString() : null,
+      instructions: p.instructions || null,
       location: (p.data && p.data.location) || '',
       surface: (p.data && p.data.surface) || '',
       visite_type: (p.data && p.data.visite_type) || null,
@@ -3690,8 +3729,15 @@ app.get('/api/projets/:id', requireAuth, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Projet non trouvé' });
     }
-    
+
     const p = result.rows[0];
+
+    let parent_titre = null;
+    if (p.parent_id) {
+      const parentRes = await pool.query('SELECT titre FROM projets WHERE id = $1 AND user_email = $2', [p.parent_id, req.user.email]);
+      if (parentRes.rows.length > 0) parent_titre = parentRes.rows[0].titre;
+    }
+
     res.json({
       success: true,
       projet: {
@@ -3700,7 +3746,10 @@ app.get('/api/projets/:id', requireAuth, async (req, res) => {
         titre: p.titre,
         analysis: p.analysis,
         data: p.data || {},
-        created_at: p.created_at
+        created_at: p.created_at,
+        parent_id: p.parent_id ? p.parent_id.toString() : null,
+        parent_titre,
+        instructions: p.instructions || null
       }
     });
   } catch (error) {
@@ -3752,11 +3801,17 @@ app.put('/api/projets/:id', requireAuth, async (req, res) => {
 
 app.delete('/api/projets/:id', requireAuth, async (req, res) => {
   try {
+    // Supprime aussi tous les descendants (affinements, sous-affinements...) pour éviter des orphelins.
     const result = await pool.query(
-      'DELETE FROM projets WHERE id = $1 AND user_email = $2 RETURNING id',
+      `WITH RECURSIVE descendants AS (
+         SELECT id FROM projets WHERE id = $1 AND user_email = $2
+         UNION ALL
+         SELECT p.id FROM projets p JOIN descendants d ON p.parent_id = d.id
+       )
+       DELETE FROM projets WHERE id IN (SELECT id FROM descendants) RETURNING id`,
       [req.params.id, req.user.email]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Projet non trouvé' });
     }
