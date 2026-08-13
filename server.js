@@ -3832,6 +3832,26 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 // ============================================================
 
 // Enregistre un email de prospect (avertir du lancement) : DB + notification admin
+// Signale une coupure réseau/proxy côté client pendant une analyse (le serveur ne voit jamais
+// ces cas puisque la requête d'analyse n'a pas échoué de son point de vue — utile pour le suivi).
+app.post('/api/report-client-error', generalLimiter, async (req, res) => {
+  try {
+    const { mode, message, userEmail } = req.body || {};
+    if (NOTIFICATION_EMAIL && BREVO_API_KEY) {
+      sendEmail(NOTIFICATION_EMAIL, '⚠️ Coupure réseau côté client — RénoExpert', emailTemplate(
+        'Coupure réseau côté client',
+        `<p>Un utilisateur a rencontré une coupure de connexion pendant une analyse.</p>
+         <p><strong>Mode :</strong> ${escapeHtml(mode || 'inconnu')}<br>
+         <strong>Utilisateur :</strong> ${escapeHtml(userEmail || 'non identifié')}<br>
+         <strong>Message navigateur :</strong> ${escapeHtml(message || 'Failed to fetch')}</p>`
+      ));
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/prospect', generalLimiter, requireAuth, async (req, res) => {
   try {
     const { email, mode } = req.body;
