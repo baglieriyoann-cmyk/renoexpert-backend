@@ -558,6 +558,36 @@ async function initDB() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_activity_user ON user_activity_logs(user_id, created_at DESC)`);
 
+    // Refonte suivi d'activité (août 2026) : sessions à durée mesurée + événements granulaires par mode
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id SERIAL PRIMARY KEY,
+        session_uuid UUID NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        started_at TIMESTAMP DEFAULT NOW(),
+        last_seen_at TIMESTAMP DEFAULT NOW(),
+        ended_at TIMESTAMP,
+        duration_seconds INTEGER,
+        user_agent TEXT
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_uuid ON sessions(session_uuid)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, started_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS events (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER REFERENCES sessions(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        event_name VARCHAR(50) NOT NULL,
+        mode VARCHAR(30),
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_events_name_mode ON events(event_name, mode, created_at DESC)`);
+
     // Migration juin 2026 : correction — remet tous les utilisateurs en 'gratuit' + 10 crédits (sauf admin)
     if (ADMIN_EMAIL) {
       await pool.query(`UPDATE users SET plan = 'gratuit', credits = 10 WHERE email != $1`, [ADMIN_EMAIL]);
@@ -572,6 +602,21 @@ async function initDB() {
 }
 
 initDB();
+
+// Filet de sécurité : ferme les sessions restées ouvertes sans heartbeat (onglet oublié, crash navigateur)
+setInterval(async () => {
+  try {
+    await pool.query(`
+      UPDATE sessions
+      SET ended_at = last_seen_at,
+          duration_seconds = GREATEST(0, EXTRACT(EPOCH FROM (last_seen_at - started_at))::INTEGER)
+      WHERE ended_at IS NULL
+        AND last_seen_at < NOW() - INTERVAL '5 minutes'
+    `);
+  } catch (err) {
+    console.error('Erreur fermeture sessions orphelines:', err.message);
+  }
+}, 10 * 60 * 1000);
 
 // ============================================================
 // HELPER : ENVOYER UN EMAIL VIA BREVO
@@ -1326,6 +1371,91 @@ app.post('/api/analytics/log', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Erreur analytics log:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// SUIVI D'ACTIVITÉ V2 — sessions horodatées + événements par mode (UX/friction)
+// ============================================================
+
+// Ouverture de session (une fois par onglet/app, session_uuid généré côté client)
+app.post('/api/track/session/start', requireAuth, async (req, res) => {
+  try {
+    const { session_uuid } = req.body;
+    if (!session_uuid) return res.status(400).json({ error: 'session_uuid requis' });
+    await pool.query(
+      `INSERT INTO sessions(session_uuid, user_id, user_agent) VALUES($1, $2, $3)
+       ON CONFLICT (session_uuid) DO NOTHING`,
+      [session_uuid, req.user.id, req.headers['user-agent'] || null]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur track session start:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Heartbeat (toutes les ~30s tant que l'onglet est visible)
+app.post('/api/track/session/ping', requireAuth, async (req, res) => {
+  try {
+    const { session_uuid } = req.body;
+    if (!session_uuid) return res.status(400).json({ error: 'session_uuid requis' });
+    await pool.query(
+      `UPDATE sessions SET last_seen_at = NOW() WHERE session_uuid = $1 AND user_id = $2`,
+      [session_uuid, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur track session ping:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fin de session explicite — envoyé via navigator.sendBeacon (pas de header Authorization possible)
+app.post('/api/track/session/end', async (req, res) => {
+  try {
+    const { session_uuid, token } = req.body || {};
+    if (!session_uuid || !token) return res.status(204).end();
+
+    const userResult = await pool.query(
+      'SELECT id FROM users WHERE session_token = $1 AND session_expires > NOW()',
+      [token]
+    );
+    if (userResult.rows.length === 0) return res.status(204).end();
+
+    await pool.query(`
+      UPDATE sessions
+      SET ended_at = NOW(),
+          duration_seconds = GREATEST(0, EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER)
+      WHERE session_uuid = $1 AND user_id = $2 AND ended_at IS NULL
+    `, [session_uuid, userResult.rows[0].id]);
+    res.status(204).end();
+  } catch (error) {
+    console.error('Erreur track session end:', error);
+    res.status(204).end();
+  }
+});
+
+// Événement granulaire (ex: analyse_start / analyse_success / analyse_error, avec le mode concerné)
+app.post('/api/track/event', requireAuth, async (req, res) => {
+  try {
+    const { session_uuid, event_name, mode, metadata } = req.body;
+    if (!event_name || typeof event_name !== 'string') {
+      return res.status(400).json({ error: 'event_name requis' });
+    }
+    let sessionId = null;
+    if (session_uuid) {
+      const s = await pool.query('SELECT id FROM sessions WHERE session_uuid = $1 AND user_id = $2', [session_uuid, req.user.id]);
+      sessionId = s.rows[0]?.id || null;
+    }
+    await pool.query(
+      `INSERT INTO events(session_id, user_id, event_name, mode, metadata) VALUES($1, $2, $3, $4, $5)`,
+      [sessionId, req.user.id, event_name.slice(0, 50), mode ? String(mode).slice(0, 30) : null, metadata ? JSON.stringify(metadata) : null]
+    );
+    res.status(204).end();
+  } catch (error) {
+    console.error('Erreur track event:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -4397,19 +4527,38 @@ app.get('/admin/users', async (req, res) => {
       SELECT u.id, u.email, u.nom, u.plan, u.created_at, u.last_login,
         COALESCE(u.nb_analyses, 0) AS nb_analyses,
         COALESCE(u.credits, 0) AS credits,
-        (SELECT COUNT(*) FROM projets WHERE user_email = u.email) AS nb_projets
+        (SELECT COUNT(*) FROM projets WHERE user_email = u.email) AS nb_projets,
+        (SELECT COUNT(*) FROM events e WHERE e.user_id = u.id) AS nb_events,
+        (SELECT MAX(GREATEST(s.last_seen_at, COALESCE(s.ended_at, s.last_seen_at)))
+           FROM sessions s WHERE s.user_id = u.id) AS derniere_activite,
+        (SELECT ROUND(AVG(s.duration_seconds)) FROM sessions s WHERE s.user_id = u.id AND s.duration_seconds IS NOT NULL) AS duree_moy_session
       FROM users u ORDER BY u.created_at DESC LIMIT 200
     `);
 
     const rows = result.rows.map(u => {
       const nbA = parseInt(u.nb_analyses || 0);
-      return '<tr>'
+      const derniereActivite = u.derniere_activite || u.last_login;
+      const dureeMoy = u.duree_moy_session ? Math.round(u.duree_moy_session / 60 * 10) / 10 : null;
+      return '<tr'
+        + ' data-email="' + escapeHtml(u.email) + '"'
+        + ' data-nom="' + escapeHtml(u.nom || '') + '"'
+        + ' data-nb_analyses="' + nbA + '"'
+        + ' data-nb_projets="' + u.nb_projets + '"'
+        + ' data-nb_events="' + (u.nb_events || 0) + '"'
+        + ' data-created_at="' + new Date(u.created_at).toISOString() + '"'
+        + ' data-last_login="' + (u.last_login ? new Date(u.last_login).toISOString() : '') + '"'
+        + ' data-derniere_activite="' + (derniereActivite ? new Date(derniereActivite).toISOString() : '') + '"'
+        + ' data-duree_moy="' + (dureeMoy || 0) + '"'
+        + '>'
         + '<td><strong>' + escapeHtml(u.email) + '</strong></td>'
         + '<td>' + escapeHtml(u.nom || '-') + '</td>'
         + '<td><span class="quota-ok">' + nbA + '</span></td>'
         + '<td>' + u.nb_projets + '</td>'
+        + '<td>' + (u.nb_events || 0) + '</td>'
         + '<td>' + new Date(u.created_at).toLocaleDateString('fr-FR') + '</td>'
         + '<td>' + (u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais') + '</td>'
+        + '<td>' + (derniereActivite ? new Date(derniereActivite).toLocaleString('fr-FR') : '-') + '</td>'
+        + '<td>' + (dureeMoy ? dureeMoy + ' min' : '-') + '</td>'
         + '</tr>';
     }).join('');
 
@@ -4420,6 +4569,7 @@ app.get('/admin/users', async (req, res) => {
       + 'table{width:100%;border-collapse:collapse}th{background:#f5f7fb;padding:10px;text-align:left;font-size:11px;color:#5e6987;font-weight:600;border-bottom:2px solid #e8eef7;text-transform:uppercase}'
       + 'td{padding:9px 10px;border-bottom:1px solid #f0f3f8;font-size:13px;vertical-align:middle}tr:hover{background:#f8faff}'
       + '.quota-ok{color:#0aa05a;font-weight:600}'
+      + 'th[data-sort]{cursor:pointer;user-select:none}th[data-sort]:hover{color:#3d7a68}'
       + '.tabs{display:flex;gap:10px;margin-bottom:20px}'
       + '.tab{padding:10px 20px;background:white;border:1px solid #e8eef7;border-radius:10px;font-weight:600;color:#5e6987;text-decoration:none}'
       + '.tab.active{background:#3d7a68;color:white;border-color:#3d7a68}'
@@ -4439,7 +4589,17 @@ app.get('/admin/users', async (req, res) => {
       + '<button onclick="exporterCSV()" style="padding:8px 18px;border-radius:6px;border:none;background:#1B4FD8;color:white;font-weight:bold;cursor:pointer;">Exporter CSV</button>'
       + '<span id="compteur-users" style="line-height:36px;color:#4a5568;font-size:13px;"></span>'
       + '</div>'
-      + '<table><thead><tr><th>Email</th><th>Nom</th><th>Analyses lanc&eacute;es</th><th>Projets sauvegard&eacute;s</th><th>Inscrit</th><th>Derni&egrave;re co.</th></tr></thead>'
+      + '<table id="users-table"><thead><tr>'
+      + '<th data-sort="email" data-type="string">Email</th>'
+      + '<th data-sort="nom" data-type="string">Nom</th>'
+      + '<th data-sort="nb_analyses" data-type="number">Analyses lanc&eacute;es</th>'
+      + '<th data-sort="nb_projets" data-type="number">Projets sauvegard&eacute;s</th>'
+      + '<th data-sort="nb_events" data-type="number">&Eacute;v&eacute;nements</th>'
+      + '<th data-sort="created_at" data-type="date">Inscrit</th>'
+      + '<th data-sort="last_login" data-type="date">Derni&egrave;re co.</th>'
+      + '<th data-sort="derniere_activite" data-type="date">Derni&egrave;re activit&eacute;</th>'
+      + '<th data-sort="duree_moy" data-type="number">Dur&eacute;e moy. session</th>'
+      + '</tr></thead>'
       + '<tbody>' + rows + '</tbody></table></div></div>'
       + '<div class="toast" id="toast"></div>'
       + '<script>async function recharger(email,userId){'
@@ -4487,6 +4647,22 @@ app.get('/admin/users', async (req, res) => {
       + 'const url=URL.createObjectURL(blob);'
       + 'const a=document.createElement("a");'
       + 'a.href=url;a.download="renoexpert_users_filtres.csv";a.click();}'
+      + 'document.querySelectorAll("#users-table th[data-sort]").forEach(function(th){'
+      + 'th.addEventListener("click",function(){'
+      + 'const key=th.dataset.sort;const type=th.dataset.type;'
+      + 'const asc=th.dataset.dir!=="asc";'
+      + 'document.querySelectorAll("#users-table th").forEach(function(h){delete h.dataset.dir;h.textContent=h.textContent.replace(/ [\\u25B2\\u25BC]$/,"");});'
+      + 'th.dataset.dir=asc?"asc":"desc";'
+      + 'const tbody=document.querySelector("#users-table tbody");'
+      + 'const rows=Array.from(tbody.querySelectorAll("tr"));'
+      + 'rows.sort(function(a,b){'
+      + 'let va=a.dataset[key]||"";let vb=b.dataset[key]||"";'
+      + 'if(type==="number"){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}'
+      + 'else if(type==="date"){va=va?new Date(va).getTime():0;vb=vb?new Date(vb).getTime():0;}'
+      + 'if(va<vb)return asc?-1:1;if(va>vb)return asc?1:-1;return 0;});'
+      + 'rows.forEach(function(r){tbody.appendChild(r);});'
+      + 'th.textContent=th.textContent+(asc?" \\u25B2":" \\u25BC");'
+      + '});});'
       + '</script></body></html>');
   } catch (error) {
     res.status(500).send('Erreur: ' + error.message);
