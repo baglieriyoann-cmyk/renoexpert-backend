@@ -47,8 +47,8 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // ============================================================
 // RATE-LIMITING (maison, sans dépendance externe)
@@ -2740,9 +2740,9 @@ PRODUIS EXACTEMENT CETTE STRUCTURE EN MARKDOWN :
 
   analyse_annonce: `Tu es un expert en évaluation immobilière et en chiffrage de travaux, fort de 10 ans de terrain. Tu analyses une annonce (photos + descriptif) pour aider un acheteur à décider.
 
-**Entrées.** Le descriptif collé par l'utilisateur (contenant en principe le prix demandé, la surface, la localisation et l'année) et les photos du bien.
+**Entrées.** Les données clés du bien (prix demandé, surface, localisation, année de construction — saisies par l'utilisateur, potentiellement "non précisé"), un descriptif optionnel collé par l'utilisateur, et les photos du bien.
 
-**1. Extraction.** Repère d'abord dans le descriptif : prix demandé, surface habitable, ville et code postal, année, type de bien, nombre de pièces/chambres. Signale toute donnée manquante.
+**1. Extraction.** Base-toi sur les données clés fournies (prix demandé, surface habitable, localisation, année). Complète avec le descriptif si présent (type de bien, nombre de pièces/chambres...). Signale toute donnée manquante ou non précisée.
 
 **2. Cohérence du prix.** Calcule le prix au m² (prix / surface) et situe-le par rapport au marché local du secteur. Indique si le prix paraît bas, cohérent ou élevé, en justifiant (état, prestations, emplacement).
 
@@ -3572,12 +3572,20 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
 
 app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.any(), async (req, res) => {
   try {
-    const { descriptif } = req.body;
+    const { descriptif, prix_demande, surface, location, annee_construction, prix_m2_reference } = req.body;
     const photos = (req.files || []).filter(f => f.fieldname === 'photos');
-    if (!descriptif || !descriptif.trim()) return res.status(400).json({ error: 'Le descriptif de l\'annonce est requis' });
     if (photos.length === 0) return res.status(400).json({ error: 'Ajoutez au moins une photo de l\'annonce' });
     if (photos.length > 20) return res.status(400).json({ error: 'Maximum 20 photos autorisées.' });
-    const context = `DESCRIPTIF DE L'ANNONCE (collé par l'utilisateur) :\n${descriptif.trim()}\n\nExtrait du descriptif les données clés (prix, surface, localisation, année, type, pièces) avant d'analyser.\n`;
+
+    let context = 'DONNÉES CLÉS DU BIEN :\n';
+    context += `- Prix demandé : ${prix_demande ? prix_demande + ' €' : 'non précisé par l\'utilisateur'}\n`;
+    context += `- Surface habitable : ${surface ? surface + ' m²' : 'non précisée par l\'utilisateur'}\n`;
+    context += `- Localisation : ${location || 'non précisée par l\'utilisateur'}\n`;
+    context += `- Année de construction : ${annee_construction || 'non précisée par l\'utilisateur'}\n`;
+    if (prix_m2_reference) context += `- Prix au m² de référence (secteur) : ${prix_m2_reference} €/m²\n`;
+    if (descriptif && descriptif.trim()) context += `\nDESCRIPTIF DE L'ANNONCE (collé par l'utilisateur) :\n${descriptif.trim()}\n`;
+    context += `\nUtilise en priorité les données clés ci-dessus (déjà vérifiées) ; complète avec le descriptif si présent.\n`;
+
     const analysis = await analyzeWithClaude(PROMPTS.analyse_annonce, photos, context);
     await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 3);
     res.json({ success: true, analysis, mode: 'analyse_annonce' });
@@ -3717,13 +3725,18 @@ async function compressPhotoBase64(photo) {
 // Génère un titre court et lisible via Claude à partir du contexte du dossier.
 // Utilisé quand le client ne fournit pas de titre définitif (cas normal) — repli sur titre_fallback si erreur/timeout.
 async function genererTitreIA({ mode, instructions, contextResume, analysisExcerpt }) {
-  const prompt = `Résume en un titre court (5-8 mots, sans guillemets, sans point final) ce dossier immobilier.
+  const prompt = `Tu es un assistant spécialisé dans le bâtiment et l'expérience utilisateur (UX). À partir de la description du diagnostic ou de l'annonce immobilière ci-dessous, génère un titre ultra-court et descriptif (maximum 6 mots).
+
+Règles strictes :
+- Ne mets aucune date dans le titre.
+- Si c'est une réparation, utilise le format : [Problème/Intervention] - [Élément concerné] (Exemples : Fuite Toiture, Réfection Carrelage Salle de Bain).
+- Si c'est une visite/annonce, utilise le format : [Type de bien] - [Ville] (Exemples : Maison - Le Meux, Appartement T3 - Paris).
+- Renvoie UNIQUEMENT le titre, sans ponctuation finale, sans guillemets et sans aucun texte d'introduction.
+
 Type d'analyse : ${mode}
 ${contextResume ? 'Contexte : ' + contextResume : ''}
 ${instructions ? "Consignes d'affinement demandées : " + instructions : ''}
-Extrait du rapport : ${(analysisExcerpt || '').slice(0, 400)}
-
-Réponds uniquement avec le titre, rien d'autre.`;
+Extrait du rapport : ${(analysisExcerpt || '').slice(0, 400)}`;
   const resp = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 40,
