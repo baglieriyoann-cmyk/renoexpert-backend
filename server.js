@@ -1975,9 +1975,31 @@ Liste uniquement les travaux réalistes et suffisants pour atteindre le palier l
 - **Rendement net estimé : XX%**
 
 ### Régime fiscal recommandé
-Régime demandé : [régime fourni par l'utilisateur]
-- [Explication de l'impact fiscal sur le rendement net]
-- [Indiquer si un autre régime serait plus avantageux et pourquoi — ex: LMNP réel si travaux importants]
+Régime demandé : [régime fourni par l'utilisateur], mode d'exploitation : [nue / meublé longue durée / courte durée]
+
+Applique STRICTEMENT les formules suivantes pour calculer les taxes selon le régime fiscal fourni. Variables : R = recettes annuelles brutes (loyer annuel HC, ou loyers + frais de ménage encaissés en courte durée), C = charges réelles annuelles déductibles, A = amortissement annuel, TMI = tranche marginale d'imposition fournie par l'utilisateur.
+
+**Micro-foncier (location nue, abattement 30%)** — inéligible si R > 15 000 € (basculer sur le régime réel) :
+- Base_Imposable = R × 0.70 ; Impôt_Revenu = Base_Imposable × TMI ; Prélèvements_Sociaux = Base_Imposable × 0.172 ; Total_Taxes = Impôt_Revenu + Prélèvements_Sociaux
+
+**LMNP Micro-BIC (meublé longue durée, abattement 50%) et LMNP LCD Classé (courte durée, étoiles de tourisme, abattement 50%)** — inéligible si R > 77 700 € (basculer sur LMNP Réel) :
+- Base_Imposable = R × 0.50 ; Impôt_Revenu = Base_Imposable × TMI
+- Cotisations sociales : si R ≤ 23 000 € → Cotisations = Base_Imposable × 0.172 ; si R > 23 000 € (régime micro-social SSI) → Cotisations = R × 0.212
+- Total_Taxes = Impôt_Revenu + Cotisations
+
+**LMNP LCD Non classé (courte durée, abattement 30%)** — inéligible si R > 15 000 € (basculer sur le régime réel) :
+- Base_Imposable = R × 0.70 ; Impôt_Revenu = Base_Imposable × TMI ; Prélèvements_Sociaux = Base_Imposable × 0.172 ; Total_Taxes = Impôt_Revenu + Prélèvements_Sociaux
+
+**Régime réel (location nue ou LMNP réel, avec ou sans amortissement)** :
+- Résultat_Comptable = R − C − A (A = 0 si pas d'amortissement, ex: régime réel location nue) ; Base_Imposable = max(0, Résultat_Comptable) ; Impôt_Revenu = Base_Imposable × TMI
+- Cotisations sociales (uniquement pour LMNP réel meublé) : si R ≤ 23 000 € → Cotisations = Base_Imposable × 0.172 ; si R > 23 000 € → Cotisations = Base_Imposable × 0.35 si Base_Imposable > 0, sinon cotisation minimale de 1 145 €
+- Total_Taxes = Impôt_Revenu + Cotisations
+
+Si les recettes estimées (loyer annuel × 12) dépassent 23 000 €, ajoute un avertissement non bloquant : "Vos recettes estimées dépassent 23 000 € par an. L'assujettissement obligatoire à la Sécurité Sociale des Indépendants (SSI) a été automatiquement calculé."
+
+- Présente le détail du calcul (Base imposable, Impôt sur le revenu, Cotisations/Prélèvements sociaux, Total des taxes) et son impact sur le rendement net.
+- Indique si le régime demandé est inéligible au vu des recettes estimées, et applique alors automatiquement le régime de repli indiqué ci-dessus.
+- Indique si un autre régime serait plus avantageux et pourquoi (ex: LMNP réel si travaux/charges importants).
 
 ### Cash-flow mensuel estimé
 | Flux | Montant |
@@ -3290,7 +3312,7 @@ app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.ar
 
 app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
   try {
-    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, regime_fiscal, prix_m2_agent, documents_notes, devis_notes, photos_notes, property_features_current, property_features_planned } = req.body;
+    const { surface, location, precisions, visite_type, prix_achat, loyer_vise, mode_exploitation, regime_fiscal, tmi, prix_m2_agent, documents_notes, devis_notes, photos_notes, property_features_current, property_features_planned } = req.body;
     const photos = (req.files && req.files.photos) || [];
     const documentsFiles = (req.files && req.files.documents) || [];
     const devisFiles = (req.files && req.files.devis) || [];
@@ -3313,7 +3335,9 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
     if (isLocatif) {
       context += prix_achat ? `Prix d'achat envisagé : ${prix_achat} €\n` : '';
       context += loyer_vise ? `Loyer mensuel visé par l'investisseur : ${loyer_vise} €/mois HC\n` : '';
+      context += mode_exploitation ? `Mode d'exploitation : ${mode_exploitation}\n` : '';
       context += regime_fiscal ? `Régime fiscal envisagé : ${regime_fiscal}\n` : '';
+      context += tmi ? `TMI (tranche marginale d'imposition) de l'utilisateur : ${tmi}\n` : '';
       context += buildFeaturesValeurBloc(property_features_current, property_features_planned);
     }
     const cpV = extraireCodePostal(location);
