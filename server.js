@@ -1276,7 +1276,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
            <ul style="background: #f0f6ff; padding: 15px; border-radius: 10px; list-style: none;">
              <li><strong>📧 Email :</strong> ${emailClean}</li>
              <li><strong>👤 Nom :</strong> ${nom || 'Non renseigné'}</li>
-             <li><strong>📅 Date :</strong> ${new Date().toLocaleString('fr-FR')}</li>
+             <li><strong>📅 Date :</strong> ${new Date().toLocaleString('fr-FR',{timeZone:'Europe/Paris'})}</li>
              <li><strong>🎁 Plan :</strong> ${plan}</li>
            </ul>
            <p>Connecte-toi à ton dashboard admin pour voir les statistiques.</p>`
@@ -3710,7 +3710,7 @@ app.post('/api/feedback', generalLimiter, async (req, res) => {
              <li><strong>📍 Lieu :</strong> ${location || 'non précisé'}</li>
              <li><strong>👤 Utilisateur :</strong> ${userEmail || userId || 'anonyme'}</li>
              <li><strong>📝 Problème :</strong> ${probleme || 'non précisé'}</li>
-             <li><strong>📅 Date :</strong> ${new Date().toLocaleString('fr-FR')}</li>
+             <li><strong>📅 Date :</strong> ${new Date().toLocaleString('fr-FR',{timeZone:'Europe/Paris'})}</li>
            </ul>
            <p>Consulte ton dashboard admin pour voir tous les feedbacks.</p>`
         )
@@ -4506,7 +4506,7 @@ app.get('/admin/feedbacks', async (req, res) => {
               <tbody>
                 ${feedbacks.map(f => `
                   <tr>
-                    <td>${new Date(f.created_at).toLocaleDateString('fr-FR')} ${new Date(f.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
+                    <td>${new Date(f.created_at).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})} ${new Date(f.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Paris'})}</td>
                     <td><span class="mode">${escapeHtml(f.mode || 'N/A')}</span></td>
                     <td><span class="note ${f.note === '👍' ? 'positif' : f.note === '👎' ? 'negatif' : 'neutre'}">${escapeHtml(f.note)}</span></td>
                     <td style="font-size:12px;color:#5e6987">${escapeHtml(f.user_email || f.user_id || 'anonyme')}</td>
@@ -4592,9 +4592,9 @@ app.get('/admin/users', async (req, res) => {
         + '<td><span class="quota-ok">' + nbA + '</span></td>'
         + '<td>' + u.nb_projets + '</td>'
         + '<td>' + (u.nb_events || 0) + '</td>'
-        + '<td>' + new Date(u.created_at).toLocaleDateString('fr-FR') + '</td>'
-        + '<td>' + (u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR') : 'Jamais') + '</td>'
-        + '<td>' + (derniereActivite ? new Date(derniereActivite).toLocaleString('fr-FR') : '-') + '</td>'
+        + '<td>' + new Date(u.created_at).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'}) + '</td>'
+        + '<td>' + (u.last_login ? new Date(u.last_login).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'}) : 'Jamais') + '</td>'
+        + '<td>' + (derniereActivite ? new Date(derniereActivite).toLocaleString('fr-FR',{timeZone:'Europe/Paris'}) : '-') + '</td>'
         + '<td>' + (dureeMoy ? dureeMoy + ' min' : '-') + '</td>'
         + '</tr>';
     }).join('');
@@ -4823,7 +4823,7 @@ app.get('/admin/analytics', async (req, res) => {
                   <td>${u.email}</td>
                   <td>${u.nb_sessions}</td>
                   <td>${u.nb_actions}</td>
-                  <td>${u.derniere_activite ? new Date(u.derniere_activite).toLocaleString('fr-FR') : '—'}</td>
+                  <td>${u.derniere_activite ? new Date(u.derniere_activite).toLocaleString('fr-FR',{timeZone:'Europe/Paris'}) : '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -4840,7 +4840,7 @@ app.get('/admin/analytics', async (req, res) => {
               ${recentSessions.rows.map(s => `
                 <tr>
                   <td>${s.email}</td>
-                  <td>${new Date(s.created_at).toLocaleString('fr-FR')}</td>
+                  <td>${new Date(s.created_at).toLocaleString('fr-FR',{timeZone:'Europe/Paris'})}</td>
                   <td class="details">${(s.user_agent || '—').slice(0, 90)}</td>
                 </tr>
               `).join('')}
@@ -4860,7 +4860,7 @@ app.get('/admin/analytics', async (req, res) => {
                   <td>${l.email}</td>
                   <td><span class="mode">${l.action_name}</span></td>
                   <td class="details">${l.details ? JSON.stringify(l.details) : '—'}</td>
-                  <td>${new Date(l.created_at).toLocaleString('fr-FR')}</td>
+                  <td>${new Date(l.created_at).toLocaleString('fr-FR',{timeZone:'Europe/Paris'})}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -4884,7 +4884,7 @@ app.get('/admin/feedbacks/export', async (req, res) => {
     let csv = 'Date,Heure,Mode,Note,Email,Localisation,Probleme\n';
     result.rows.forEach(f => {
       const d = new Date(f.created_at);
-      csv += `${d.toLocaleDateString('fr-FR')},${d.toLocaleTimeString('fr-FR')},${f.mode || ''},${f.note},${f.user_email || ''},${f.location || ''},"${(f.probleme || '').replace(/"/g, '""')}"\n`;
+      csv += `${d.toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})},${d.toLocaleTimeString('fr-FR',{timeZone:'Europe/Paris'})},${f.mode || ''},${f.note},${f.user_email || ''},${f.location || ''},"${(f.probleme || '').replace(/"/g, '""')}"\n`;
     });
     
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
