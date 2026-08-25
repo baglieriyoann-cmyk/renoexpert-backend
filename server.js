@@ -4003,11 +4003,16 @@ app.delete('/api/projets/:id', requireAuth, async (req, res) => {
 // ces cas puisque la requête d'analyse n'a pas échoué de son point de vue — utile pour le suivi).
 app.post('/api/report-client-error', generalLimiter, async (req, res) => {
   try {
-    const { mode, message, userEmail } = req.body || {};
+    const { mode, message, userEmail, type } = req.body || {};
+    const isTimeout = type === 'timeout';
     if (NOTIFICATION_EMAIL && BREVO_API_KEY) {
-      sendEmail(NOTIFICATION_EMAIL, '⚠️ Coupure réseau côté client — RénoExpert', emailTemplate(
-        'Coupure réseau côté client',
-        `<p>Un utilisateur a rencontré une coupure de connexion pendant une analyse.</p>
+      sendEmail(NOTIFICATION_EMAIL, isTimeout
+        ? '⏱️ Timeout client pendant une analyse — RénoExpert'
+        : '⚠️ Coupure réseau côté client — RénoExpert', emailTemplate(
+        isTimeout ? 'Timeout côté client (pas forcément une coupure réseau)' : 'Coupure réseau côté client',
+        `<p>${isTimeout
+          ? 'Le client a abandonné la requête après expiration du délai côté navigateur. Le serveur a peut-être continué / terminé le traitement normalement.'
+          : 'Un utilisateur a rencontré une coupure de connexion pendant une analyse.'}</p>
          <p><strong>Mode :</strong> ${escapeHtml(mode || 'inconnu')}<br>
          <strong>Utilisateur :</strong> ${escapeHtml(userEmail || 'non identifié')}<br>
          <strong>Message navigateur :</strong> ${escapeHtml(message || 'Failed to fetch')}</p>`
