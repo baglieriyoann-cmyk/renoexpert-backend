@@ -50,6 +50,19 @@ app.use(cors({
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
+// Log minimal des routes d'analyse IA (potentiellement longues) : début, fin, durée.
+// Objectif : garder une trace même si la requête reste bloquée ou si le process crash,
+// pour diagnostiquer les cas de blocage silencieux (aucune erreur catch côté route).
+app.use((req, res, next) => {
+  if (!/^\/api\/(analyze|refine)\//.test(req.path)) return next();
+  const t0 = Date.now();
+  console.log(`[analyse] → ${req.method} ${req.path} start ip=${getClientIp(req)}`);
+  res.on('finish', () => {
+    console.log(`[analyse] ← ${req.method} ${req.path} status=${res.statusCode} durée=${Date.now() - t0}ms`);
+  });
+  next();
+});
+
 // ============================================================
 // RATE-LIMITING (maison, sans dépendance externe)
 // ============================================================
