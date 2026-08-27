@@ -3070,7 +3070,11 @@ async function resizePhotoForApi(buffer) {
       .jpeg({ quality: 85 })
       .toBuffer();
   } catch {
-    return buffer;
+    // Format non décodable par sharp (ex. HEIC, fichier corrompu) : impossible de le
+    // convertir en JPEG. Renvoyer le buffer brut le ferait passer pour un JPEG valide
+    // et planterait l'appel Claude avec une erreur 400 "Could not process image" sans
+    // dire quelle photo est en cause. On signale l'échec pour l'exclure explicitement.
+    return null;
   }
 }
 
@@ -3129,6 +3133,14 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
   const resizedBuffers = await Promise.all(
     photos.map(p => p.mimetype && p.mimetype !== 'application/pdf' ? resizePhotoForApi(p.buffer) : Promise.resolve(null))
   );
+
+  const photosIllisibles = photos
+    .map((p, i) => ({ p, i }))
+    .filter(({ p, i }) => p.mimetype && p.mimetype !== 'application/pdf' && resizedBuffers[i] === null);
+  if (photosIllisibles.length > 0) {
+    const numeros = photosIllisibles.map(({ i }) => i + 1).join(', ');
+    throw new Error(`Photo${photosIllisibles.length > 1 ? 's' : ''} ${numeros} illisible${photosIllisibles.length > 1 ? 's' : ''} (format non supporté ou fichier corrompu). Retirez-la${photosIllisibles.length > 1 ? 's' : ''} et réessayez.`);
+  }
 
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i];
