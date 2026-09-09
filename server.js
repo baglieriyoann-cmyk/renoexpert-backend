@@ -3170,7 +3170,7 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
       max_tokens: 16000,
       messages: [{ role: 'user', content }],
       betas: [FILES_API_BETA]
-    }, { timeout: 180 * 1000 });
+    }, { timeout: 280 * 1000 });
   } catch (err) {
     // Enrichir le message d'erreur pour faciliter le diagnostic
     const status = err.status || err.statusCode || null;
@@ -3338,7 +3338,7 @@ ${systemPrompt}`;
     max_tokens: 16000,
     messages: [{ role: 'user', content }],
     betas: [FILES_API_BETA]
-  }, { timeout: 180 * 1000 });
+  }, { timeout: 280 * 1000 });
 
   return message.content[0].text;
 }
