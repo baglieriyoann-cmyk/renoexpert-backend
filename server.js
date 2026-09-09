@@ -3346,16 +3346,27 @@ ${systemPrompt}`;
 // ============================================================
 // ROUTE EXPRESS — Chiffrage rapide (1 crédit, ~30 secondes)
 // ============================================================
-app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.array('photos', 5), async (req, res) => {
+app.post('/api/analyze/express', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 5 }, { name: 'documents', maxCount: 20 }]), async (req, res) => {
   try {
-    const { context_bien, description } = req.body;
-    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    if (req.files.length > 5) return res.status(400).json({ error: 'Maximum 5 photos autorisées pour cette analyse.' });
+    const { context_bien, description, documents_notes } = req.body;
+    const photos = (req.files && req.files.photos) || [];
+    const documentsFiles = (req.files && req.files.documents) || [];
+    if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (photos.length > 5) return res.status(400).json({ error: 'Maximum 5 photos autorisées pour cette analyse.' });
+    const documentsNote = documentsFiles.length > 0
+      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même parmi eux le DPE ou tout autre diagnostic, d'après leur contenu. Utilise SES VALEURS RÉELLES pour le DPE repéré (classe, kWh/m²/an, GES) — pas d'estimation.\n`
+      : '';
+    const documentsNotesBlock = documents_notes && documents_notes.trim()
+      ? `\nPrécisions transmises par le client sur les documents fournis : ${documents_notes.trim()}\n`
+      : '';
     const context = [
       context_bien ? `Contexte du bien : ${context_bien}` : '',
-      description ? `Description : ${description}` : ''
+      description ? `Description : ${description}` : '',
+      documentsNote,
+      documentsNotesBlock
     ].filter(Boolean).join('\n');
-    const analysis = await analyzeWithClaude(PROMPTS.express, req.files, context);
+    const docLabels = documentsFiles.map(() => 'Document fourni — nature à identifier toi-même (DPE ou tout autre diagnostic).');
+    const analysis = await analyzeWithClaude(PROMPTS.express, photos, context, documentsFiles, [], docLabels);
     await incrementAnalysesCounter(req.user.id, 'express', req.creditCost || 1);
     if (!res.headersSent) res.json({ success: true, analysis, mode: 'express' });
   } catch (error) {
@@ -3427,14 +3438,23 @@ app.post('/api/analyze/visite', aiLimiter, requireAuth, checkAnalysesQuota, uplo
   }
 });
 
-app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, upload.array('photos', 10), async (req, res) => {
+app.post('/api/analyze/reparation', aiLimiter, requireAuth, checkAnalysesQuota, upload.fields([{ name: 'photos', maxCount: 10 }, { name: 'documents', maxCount: 20 }]), async (req, res) => {
   try {
-    const { description, precisions } = req.body;
-    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'Aucune photo' });
-    if (req.files.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées pour cette analyse.' });
-    const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions);
+    const { description, precisions, documents_notes } = req.body;
+    const photos = (req.files && req.files.photos) || [];
+    const documentsFiles = (req.files && req.files.documents) || [];
+    if (photos.length === 0) return res.status(400).json({ error: 'Aucune photo' });
+    if (photos.length > 10) return res.status(400).json({ error: 'Maximum 10 photos autorisées pour cette analyse.' });
+    const documentsNote = documentsFiles.length > 0
+      ? `\nDes documents sont joints (voir ci-dessous, avant les photos) — ils ne sont PAS étiquetés par type : identifie toi-même leur nature (devis, DPE, diagnostic, etc.) d'après leur contenu et utilise leurs valeurs réelles.\n`
+      : '';
+    const documentsNotesBlock = documents_notes && documents_notes.trim()
+      ? `\nPrécisions transmises par le client sur les documents fournis : ${documents_notes.trim()}\n`
+      : '';
+    const context = (description ? `Description : ${description}\n\n` : '') + precisionsBlock(precisions) + documentsNote + documentsNotesBlock;
     const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await analyzeWithClaude(PROMPTS.reparation, req.files, context, [], photoComments);
+    const docLabels = documentsFiles.map(() => 'Document fourni — nature à identifier toi-même (devis, DPE, diagnostic, etc.).');
+    const analysis = await analyzeWithClaude(PROMPTS.reparation, photos, context, documentsFiles, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     if (!res.headersSent) res.json({ success: true, analysis });
   } catch (error) {
@@ -3625,13 +3645,13 @@ app.post('/api/refine/visite', aiLimiter, requireAuth, checkCredits, upload.fiel
   }
 });
 
-app.post('/api/refine/reparation', aiLimiter, requireAuth, checkCredits, upload.array('photos', 10), async (req, res) => {
+app.post('/api/refine/reparation', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 10 }, { name: 'documents', maxCount: 20 }]), async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
-    const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context, req.files || [], [], photoComments, []);
+    const { photos, extraDocs, docLabels, photoComments } = extractRefineFiles(req);
+    const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context, photos, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -3666,8 +3686,9 @@ app.post('/api/annonce', aiLimiter, requireAuth, checkAnalysesQuota, async (req,
 
 app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.any(), async (req, res) => {
   try {
-    const { descriptif, prix_demande, surface, location, annee_construction, prix_m2_reference } = req.body;
+    const { descriptif, prix_demande, surface, location, annee_construction, prix_m2_reference, documents_notes } = req.body;
     const photos = (req.files || []).filter(f => f.fieldname === 'photos');
+    const documentsFiles = (req.files || []).filter(f => f.fieldname === 'documents');
     if (photos.length === 0) return res.status(400).json({ error: 'Ajoutez au moins une photo de l\'annonce' });
     if (photos.length > 20) return res.status(400).json({ error: 'Maximum 20 photos autorisées.' });
 
@@ -3679,8 +3700,11 @@ app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.an
     if (prix_m2_reference) context += `- Prix au m² de référence (secteur) : ${prix_m2_reference} €/m²\n`;
     if (descriptif && descriptif.trim()) context += `\nDESCRIPTIF DE L'ANNONCE (collé par l'utilisateur) :\n${descriptif.trim()}\n`;
     context += `\nUtilise en priorité les données clés ci-dessus (déjà vérifiées) ; complète avec le descriptif si présent.\n`;
+    if (documentsFiles.length > 0) context += `\nDes documents sont joints (voir ci-dessous, avant les photos) — identifie toi-même leur nature (DPE ou tout autre diagnostic) et utilise leurs valeurs réelles.\n`;
+    if (documents_notes && documents_notes.trim()) context += `\nPrécisions transmises par l'utilisateur sur les documents fournis : ${documents_notes.trim()}\n`;
 
-    const analysis = await analyzeWithClaude(PROMPTS.analyse_annonce, photos, context);
+    const docLabels = documentsFiles.map(() => 'Document fourni — nature à identifier toi-même (DPE ou tout autre diagnostic).');
+    const analysis = await analyzeWithClaude(PROMPTS.analyse_annonce, photos, context, documentsFiles, [], docLabels);
     await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 3);
     res.json({ success: true, analysis, mode: 'analyse_annonce' });
   } catch (error) {
@@ -3689,13 +3713,13 @@ app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.an
   }
 });
 
-app.post('/api/refine/annonce-analyse', aiLimiter, requireAuth, checkCredits, upload.array('photos', 20), async (req, res) => {
+app.post('/api/refine/annonce-analyse', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'documents', maxCount: 20 }]), async (req, res) => {
   try {
     const { previousAnalysis, instructions, descriptif } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = descriptif ? `Descriptif de l'annonce :\n${descriptif}\n\n` : '';
-    const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await refineWithClaude(PROMPTS.analyse_annonce, previousAnalysis, instructions, context, req.files || [], [], photoComments, []);
+    const { photos, extraDocs, docLabels, photoComments } = extractRefineFiles(req);
+    const analysis = await refineWithClaude(PROMPTS.analyse_annonce, previousAnalysis, instructions, context, photos, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -3719,13 +3743,13 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, upload.field
   }
 });
 
-app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, upload.array('photos', 5), async (req, res) => {
+app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 5 }, { name: 'documents', maxCount: 20 }]), async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
-    const photoComments = parsePhotoComments(req.body.comments);
-    const analysis = await refineWithClaude(PROMPTS.express, previousAnalysis, instructions, context, req.files || [], [], photoComments, []);
+    const { photos, extraDocs, docLabels, photoComments } = extractRefineFiles(req);
+    const analysis = await refineWithClaude(PROMPTS.express, previousAnalysis, instructions, context, photos, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
