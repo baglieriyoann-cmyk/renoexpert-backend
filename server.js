@@ -3112,9 +3112,10 @@ async function fileToContent(file, resizedBuffer) {
   };
 }
 
-async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = [], docLabels = []) {
+// Construit les blocs de contenu Claude (texte + images/documents) pour un jeu de photos/documents.
+// Partagé entre analyzeWithClaude (analyse initiale) et refineWithClaude (affinement avec nouveaux fichiers).
+async function buildFilesContentBlocks(photos = [], extraDocs = [], photoComments = [], docLabels = []) {
   const content = [];
-  if (additionalContext) content.push({ type: 'text', text: additionalContext });
   for (let i = 0; i < extraDocs.length; i++) {
     if (docLabels[i]) content.push({ type: 'text', text: docLabels[i] });
     content.push(await fileToContent(extraDocs[i]));
@@ -3153,6 +3154,13 @@ async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDo
     content.push(await fileToContent(photo, resizedBuffers[i]));
   }
 
+  return content;
+}
+
+async function analyzeWithClaude(prompt, photos, additionalContext = '', extraDocs = [], photoComments = [], docLabels = []) {
+  const content = [];
+  if (additionalContext) content.push({ type: 'text', text: additionalContext });
+  content.push(...await buildFilesContentBlocks(photos, extraDocs, photoComments, docLabels));
   content.push({ type: 'text', text: prompt });
 
   let message;
@@ -3282,8 +3290,8 @@ ${p}
 `;
 }
 
-// Helper : analyse Claude sans photos (utilisé pour l'affinement)
-async function refineWithClaude(systemPrompt, previousAnalysis, instructions, context) {
+// Helper : analyse Claude pour l'affinement — texte seul, ou avec de nouvelles photos/documents ajoutés par l'utilisateur
+async function refineWithClaude(systemPrompt, previousAnalysis, instructions, context, newPhotos = [], newDocs = [], photoComments = [], docLabels = []) {
   const userPrompt = `${context || ''}Voici l'analyse précédente que tu avais produite :
 
 ═══════════════════════════════════════════════════════════
@@ -3300,17 +3308,37 @@ CONSIGNE :
 - Réécris l'analyse COMPLÈTE en intégrant les consignes ci-dessus.
 - GARDE EXACTEMENT le même format de réponse (mêmes titres de sections, mêmes balises markdown # ## ###, mêmes tableaux markdown |...|).
 - Ne supprime aucune section utile. Modifie, ajoute ou affine selon les consignes.
-- N'invente pas d'informations factuelles nouvelles que tu ne pourrais pas déduire de l'analyse précédente et des consignes.
+- N'invente pas d'informations factuelles nouvelles que tu ne pourrais pas déduire de l'analyse précédente, des consignes${(newPhotos.length || newDocs.length) ? ' et des nouveaux fichiers fournis ci-dessous' : ''}.
 - Si une consigne contredit l'analyse précédente, applique la consigne de l'utilisateur — c'est lui qui décide.
 - Réponds UNIQUEMENT avec l'analyse réécrite, sans préambule ni commentaire.
 
 ${systemPrompt}`;
 
-  const message = await anthropic.messages.create({
+  const hasNewFiles = newPhotos.length > 0 || newDocs.length > 0;
+
+  if (!hasNewFiles) {
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 16000,
+      messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
+    });
+    return message.content[0].text;
+  }
+
+  const content = [];
+  content.push(...await buildFilesContentBlocks(newPhotos, newDocs, photoComments, docLabels));
+  content.push({
+    type: 'text',
+    text: `Les fichiers ci-dessus sont de NOUVEAUX documents/photos que l'utilisateur ajoute à l'occasion de cet affinement (ils ne faisaient pas partie de l'analyse initiale) — prends-les en compte pour compléter ou corriger le rapport, en citant leur numéro comme indiqué ci-dessus le cas échéant.`
+  });
+  content.push({ type: 'text', text: userPrompt });
+
+  const message = await anthropic.beta.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 16000,
-    messages: [{ role: 'user', content: [{ type: 'text', text: userPrompt }] }]
-  });
+    messages: [{ role: 'user', content }],
+    betas: [FILES_API_BETA]
+  }, { timeout: 180 * 1000 });
 
   return message.content[0].text;
 }
@@ -3568,12 +3596,27 @@ Pour le prix de REVENTE après travaux, base-toi sur les données DVF ci-dessus.
 // ROUTES D'AFFINEMENT (sans photos, sur la base d'une analyse précédente)
 // ============================================================
 
-app.post('/api/refine/visite', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+// Lit les nouvelles photos/documents/devis d'une requête de refine multipart (req.files peut être vide en JSON pur)
+function extractRefineFiles(req) {
+  const files = req.files || {};
+  const photos = files.photos || [];
+  const documentsFiles = files.documents || [];
+  const devisFiles = files.devis || [];
+  const docLabels = [];
+  const extraDocs = [];
+  documentsFiles.forEach(f => { extraDocs.push(f); docLabels.push('Nouveau document fourni par l\'utilisateur lors de l\'affinement — nature à identifier toi-même (DPE, DPE Global, assainissement/SPANC, DTG, EDD, ou tout autre diagnostic).'); });
+  devisFiles.forEach(f => { extraDocs.push(f); docLabels.push('Nouveau devis d\'artisan fourni par l\'utilisateur lors de l\'affinement — chiffrage réel du marché local, à confronter à ton estimation de travaux et à commenter dans le rapport.'); });
+  const photoComments = parsePhotoComments(req.body.comments);
+  return { photos, extraDocs, docLabels, photoComments };
+}
+
+app.post('/api/refine/visite', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 20 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface || 'non précisée'} m²\nLocalisation : ${location || 'non précisée'}\n\n`;
-    const analysis = await refineWithClaude(PROMPTS.visite, previousAnalysis, instructions, context);
+    const { photos, extraDocs, docLabels, photoComments } = extractRefineFiles(req);
+    const analysis = await refineWithClaude(PROMPTS.visite, previousAnalysis, instructions, context, photos, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -3582,12 +3625,13 @@ app.post('/api/refine/visite', aiLimiter, requireAuth, checkCredits, async (req,
   }
 });
 
-app.post('/api/refine/reparation', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+app.post('/api/refine/reparation', aiLimiter, requireAuth, checkCredits, upload.array('photos', 10), async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
-    const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context);
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await refineWithClaude(PROMPTS.reparation, previousAnalysis, instructions, context, req.files || [], [], photoComments, []);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -3645,12 +3689,13 @@ app.post('/api/analyze/annonce', aiLimiter, requireAuth, checkCredits, upload.an
   }
 });
 
-app.post('/api/refine/annonce-analyse', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+app.post('/api/refine/annonce-analyse', aiLimiter, requireAuth, checkCredits, upload.array('photos', 20), async (req, res) => {
   try {
     const { previousAnalysis, instructions, descriptif } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = descriptif ? `Descriptif de l'annonce :\n${descriptif}\n\n` : '';
-    const analysis = await refineWithClaude(PROMPTS.analyse_annonce, previousAnalysis, instructions, context);
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await refineWithClaude(PROMPTS.analyse_annonce, previousAnalysis, instructions, context, req.files || [], [], photoComments, []);
     await incrementAnalysesCounter(req.user.id, 'annonce_analyse', req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -3659,12 +3704,13 @@ app.post('/api/refine/annonce-analyse', aiLimiter, requireAuth, checkCredits, as
   }
 });
 
-app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, upload.fields([{ name: 'photos', maxCount: 30 }, { name: 'documents', maxCount: 20 }, { name: 'devis', maxCount: 20 }]), async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, location, agence_nom, agent_nom } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = `Surface : ${surface} m²\nLocalisation : ${location}\nAgence : ${agence_nom}\nAgent : ${agent_nom}\n\n`;
-    const analysis = await refineWithClaude(PROMPTS.agent, previousAnalysis, instructions, context);
+    const { photos, extraDocs, docLabels, photoComments } = extractRefineFiles(req);
+    const analysis = await refineWithClaude(PROMPTS.agent, previousAnalysis, instructions, context, photos, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis, agence_nom, agent_nom });
   } catch (error) {
@@ -3673,12 +3719,13 @@ app.post('/api/refine/agent', aiLimiter, requireAuth, checkCredits, async (req, 
   }
 });
 
-app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, upload.array('photos', 5), async (req, res) => {
   try {
     const { previousAnalysis, instructions, description } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
     const context = description ? `Description initiale : ${description}\n\n` : '';
-    const analysis = await refineWithClaude(PROMPTS.express, previousAnalysis, instructions, context);
+    const photoComments = parsePhotoComments(req.body.comments);
+    const analysis = await refineWithClaude(PROMPTS.express, previousAnalysis, instructions, context, req.files || [], [], photoComments, []);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     res.json({ success: true, analysis });
   } catch (error) {
@@ -3687,7 +3734,7 @@ app.post('/api/refine/express', aiLimiter, requireAuth, checkCredits, async (req
   }
 });
 
-app.post('/api/refine/marchand', aiLimiter, requireAuth, checkCredits, async (req, res) => {
+app.post('/api/refine/marchand', aiLimiter, requireAuth, checkCredits, uploadMarchand.fields([{ name: 'photos', maxCount: 50 }, { name: 'documents', maxCount: 60 }, { name: 'devis', maxCount: 60 }]), async (req, res) => {
   try {
     const { previousAnalysis, instructions, surface, prix_demande, location, nb_lots, annee_construction, mb_societe } = req.body;
     if (!previousAnalysis || !instructions) return res.status(400).json({ error: 'previousAnalysis et instructions requis' });
@@ -3699,7 +3746,8 @@ Prix demandé : ${prix_demande} €
 Nombre de lots : ${nb_lots}
 
 `;
-    const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context);
+    const { photos, extraDocs, docLabels, photoComments } = extractRefineFiles(req);
+    const analysis = await refineWithClaude(PROMPTS.marchand, previousAnalysis, instructions, context, photos, extraDocs, photoComments, docLabels);
     await incrementAnalysesCounter(req.user.id, getModeFromReq(req), req.creditCost || 0);
     const frais_notaire_mb_3pct = prix_demande ? Math.round(parseFloat(prix_demande) * 0.03) : null;
     res.json({ success: true, analysis, frais_notaire_mb_3pct });
