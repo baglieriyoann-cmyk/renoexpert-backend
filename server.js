@@ -47,7 +47,7 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Log minimal des routes d'analyse IA (potentiellement longues) : début, fin, durée.
