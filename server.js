@@ -3116,9 +3116,20 @@ async function fileToContent(file, resizedBuffer) {
 // Partagé entre analyzeWithClaude (analyse initiale) et refineWithClaude (affinement avec nouveaux fichiers).
 async function buildFilesContentBlocks(photos = [], extraDocs = [], photoComments = [], docLabels = []) {
   const content = [];
+  // Les documents complémentaires (DPE, devis…) peuvent être des images (photo/scan) : ils doivent
+  // être redimensionnés comme les photos, sinon l'API refuse toute image > 2000 px dès qu'il y a
+  // beaucoup d'images dans la requête (erreur 400 "image dimensions exceed max allowed size").
   for (let i = 0; i < extraDocs.length; i++) {
+    const doc = extraDocs[i];
+    let resizedDoc = null;
+    if (doc.mimetype !== 'application/pdf') {
+      resizedDoc = await resizePhotoForApi(doc.buffer);
+      if (resizedDoc === null) {
+        throw new Error(`Document « ${doc.originalname || 'joint'} » illisible (format non supporté ou fichier corrompu). Retirez-le ou fournissez-le en PDF/JPEG, puis réessayez.`);
+      }
+    }
     if (docLabels[i]) content.push({ type: 'text', text: docLabels[i] });
-    content.push(await fileToContent(extraDocs[i]));
+    content.push(await fileToContent(doc, resizedDoc));
   }
 
   const hasAnyComment = Array.isArray(photoComments) && photoComments.some(c => c && c.trim());
